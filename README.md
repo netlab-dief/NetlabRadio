@@ -233,6 +233,27 @@ The default digital amplitude is 0.15, separate from RF gain. Each TX burst
 has zero padding, and the UHD BURST_ACK is checked. Asynchronous errors and
 timeouts stop the application with an error, without counting a successful TX.
 
+Each complete padded waveform is submitted in one UHD send call with both
+start-of-burst and end-of-burst set. UHD handles USB packet fragmentation and
+places the end flag on the final fragment. This avoids a separate Python call
+to terminate a burst after its samples have already been sent. A short send
+is treated as an incomplete burst and stops TX instead of resending a remainder
+whose burst boundary is uncertain.
+
+### TX underflow troubleshooting
+
+UHD event `0x2` is a TX underflow: an internal transmit buffer emptied. It does
+not mean that the UDP input queue is full. NetlabRadio stops on this event and
+does not count the affected burst as successful. The single-call burst submission
+above removes one possible source of starvation; it does not guarantee that
+underflows cannot occur due to host scheduling or transport limitations.
+
+When testing, start with one UDP packet at a time, then a paced source (for
+example, one packet every 10 ms). An unpaced localhost sender can consume CPU
+and exceed the modem's processing capacity; UDP submissions are not proof of
+RF transmissions. If underflow persists, try TX-only mode to isolate receive/
+decode load, and check the USB connection and UHD diagnostics.
+
 ## PHY features
 
 STF/LTF preamble, packet detection, coarse and fine CFO estimation, LTF-based

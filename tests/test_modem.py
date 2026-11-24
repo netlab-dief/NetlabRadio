@@ -95,14 +95,15 @@ class ModemTests(unittest.TestCase):
 
 
 class FakeAPI:
-    def __init__(self,empty=False,error=0):
+    def __init__(self,empty=False,error=0,short=False):
         self.sends=[]
         self.empty=empty
         self.error=error
+        self.short=short
     def call(self,name,*args):
         if name=="tx_streamer_send":
             handle,ptrs,length,md,timeout,out=args
-            n=0 if self.empty else min(length,23)
+            n=0 if self.empty else min(length,23) if self.short else length
             C.cast(out,C.POINTER(C.c_size_t))[0]=n
             self.sends.append((length,C.cast(md,C.POINTER(C.c_void_p))[0]))
         elif name=="tx_streamer_recv_async_msg":
@@ -117,15 +118,19 @@ class UHDTests(unittest.TestCase):
         r.api=FakeAPI(**kw)
         r.tx=C.c_void_p(10)
         r.asyncmd=C.c_void_p(11)
-        r.txmd={(True,False):C.c_void_p(1),(False,False):C.c_void_p(2),(False,True):C.c_void_p(3)}
+        r.txmd={(True,True):C.c_void_p(4)}
         return r
 
-    def test_partial_send_sob_and_eob(self):
+    def test_complete_burst_sob_and_eob_in_one_send(self):
         r=self.make_radio()
         r.transmit(np.ones(10,np.complex64))
-        self.assertEqual(r.api.sends[0][1],1)
-        self.assertTrue(all(x[1]==2 for x in r.api.sends[1:-1]))
-        self.assertEqual(r.api.sends[-1],(0,3))
+        self.assertEqual(r.api.sends,[(1110,4)])
+
+    def test_short_send_is_not_retried_as_an_intact_burst(self):
+        r=self.make_radio(short=True)
+        with self.assertRaisesRegex(RuntimeError,"short send"):
+            r.transmit(np.ones(10,np.complex64))
+        self.assertEqual(r.api.sends,[(1110,4)])
 
     def test_tx_zero_progress_stops(self):
         r=self.make_radio(empty=True)
@@ -134,7 +139,7 @@ class UHDTests(unittest.TestCase):
 
     def test_tx_underflow_is_not_success(self):
         r=self.make_radio(error=2)
-        with self.assertRaisesRegex(RuntimeError,"async error"):
+        with self.assertRaisesRegex(RuntimeError,"underflow"):
             r.transmit(np.zeros(20,np.complex64))
 
 

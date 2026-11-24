@@ -611,7 +611,7 @@ class Radio:
             self.asyncmd = self.new_metadata("async_metadata") if self.tx else None
             self.txmd = {}
             if self.tx:
-                for sob,eob in ((True,False),(False,False),(False,True)):
+                for sob,eob in ((True,True),):
                     self.txmd[sob,eob] = self.new_metadata("tx_metadata",False,0,0.,sob,eob)
         except BaseException:
             self.close()
@@ -641,19 +641,16 @@ class Radio:
 
     def transmit(self,iq):
         iq = np.ascontiguousarray(np.r_[np.zeros(100,np.complex64),iq,np.zeros(1000,np.complex64)],dtype=np.complex64)
-        offset = 0
-        while offset < len(iq):
-            pointers = (H*1)(iq.ctypes.data+offset*8)
-            n = Z()
-            md = self.txmd[offset==0,False]
-            self.api.call("tx_streamer_send",self.tx,pointers,len(iq)-offset,C.byref(md),1.,C.byref(n))
-            if n.value == 0:
-                raise RuntimeError("UHD TX timeout: nessun campione accettato")
-            offset += n.value
-        n = Z()
-        md = self.txmd[False,True]
+        # UHD fragments this buffer and applies EOB to its last fragment. Sending
+        # EOB in a later Python call can leave the device waiting for samples.
         pointers = (H*1)(iq.ctypes.data)
-        self.api.call("tx_streamer_send",self.tx,pointers,0,C.byref(md),1.,C.byref(n))
+        n = Z()
+        md = self.txmd[True,True]
+        self.api.call("tx_streamer_send",self.tx,pointers,len(iq),C.byref(md),1.,C.byref(n))
+        if n.value != len(iq):
+            # EOB may already have been applied to an accepted fragment. Do not
+            # append the remainder as though this were an intact OFDM frame.
+            raise RuntimeError(f"UHD TX timeout/short send: {n.value}/{len(iq)} samples accepted; burst incomplete")
         deadline = time.monotonic()+1.
         while time.monotonic() < deadline:
             valid = B()
@@ -663,7 +660,9 @@ class Radio:
                 self.api.call("async_metadata_event_code",self.asyncmd,C.byref(code))
                 if code.value == 1:
                     return
-                raise RuntimeError(f"UHD TX async error 0x{code.value:x}: burst non confermato")
+                event = {2:"underflow (TX buffer emptied)",4:"sequence error",
+                         8:"time error",16:"underflow inside packet",32:"sequence error inside burst"}.get(code.value,"unknown event")
+                raise RuntimeError(f"UHD TX async error 0x{code.value:x}: {event}; burst not confirmed")
         raise RuntimeError("UHD TX: nessun BURST_ACK entro 1 secondo")
 
     def reconfigure(self, args, changed):

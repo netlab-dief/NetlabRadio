@@ -96,3 +96,13 @@ After translating the documentation and terminal help into English:
   blocked by the same sandbox restriction on binding a local server.
 - No Linux runtime or Linux B200 USB/RF validation was performed. These are
   preparation checks on macOS, not evidence of Linux hardware interoperability.
+
+## TX burst termination correction
+
+A user hardware run reported UHD TX event `0x2` (underflow). Waveform submission
+now sets SOB and EOB on the same non-empty send, allowing UHD to put EOB on the
+final transport fragment instead of relying on a separate zero-length send
+from Python. Regression coverage checks one-call submission, rejection of a
+short send without retrying it as an intact burst, zero-progress timeout and
+continued rejection of underflow as a successful transmission. Verification of
+this change on the user's B200 is still pending.
