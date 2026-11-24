@@ -1,2 +1,5 @@
 .venv/*
-__pycache/*
+__pycache__/*
+uhd-images/*
+*.pyc
+*.pcap
