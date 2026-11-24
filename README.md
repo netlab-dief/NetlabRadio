@@ -7,6 +7,11 @@ attempts to install it once.
 
 ## Getting started
 
+For Linux installation, USB permissions, firmware images and launch commands,
+see [LINUX.md](LINUX.md). The same Python modem and browser GUI are used on
+both platforms; `avvia.command` is the macOS launcher and `start-linux.sh`
+is the Linux launcher. The steps in this section are for macOS.
+
 UHD is already installed on the Mac used to prepare this project. On another Mac:
 
 ```sh
@@ -292,9 +297,10 @@ neither GNSS/PPS synchronization nor a validated basis for latency measurements.
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Python >=3.10. `test_reference.py` optionally uses clang++ and the
+Python >=3.10. `test_reference.py` optionally uses clang++ or g++ and the
 `../gr-ieee802-11` sources to verify encoding without linking GNU Radio.
-The ABI test requires the Homebrew UHD headers.
+The ABI test requires UHD headers and a C compiler (Homebrew on macOS or the
+Linux development package).
 
 Protocol tables and conventions derived from bastibl/gr-ieee802-11, copyright
 Bastian Bloessl, GPL-3.0-or-later. The standalone implementation is distributed

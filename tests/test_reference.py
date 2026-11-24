@@ -1,7 +1,7 @@
 """Compare the native transmitter to the user's independently compiled C++ codec.
 
 The original DSP helpers are compiled with minimal standalone declarations;
-GNU Radio is neither installed nor linked. Skipped if sources/clang are absent.
+GNU Radio is neither installed nor linked. Skipped if sources/compiler are absent.
 """
 from pathlib import Path
 import ctypes as C
@@ -21,8 +21,9 @@ class ReferenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source=Path(__file__).resolve().parents[2]/"gr-ieee802-11/lib"
-        if not shutil.which("clang++") or not (source/"utils.cc").exists():
-            raise unittest.SkipTest("clang++ o sorgenti gr-ieee802-11 non disponibili")
+        compiler = shutil.which("clang++") or shutil.which("g++")
+        if not compiler or not (source/"utils.cc").exists():
+            raise unittest.SkipTest("C++ compiler or gr-ieee802-11 sources unavailable")
         cls.tmp=tempfile.TemporaryDirectory()
         tmp=Path(cls.tmp.name)
         header=(source/"utils.h").read_text()
@@ -49,8 +50,8 @@ extern "C" int reference(const char* psdu, int size, int enc, int seed, unsigned
 }
 '''
         (tmp/"ref.cc").write_text('#include <cmath>\n#include <vector>\n'+cpp)
-        lib=tmp/"ref.dylib"
-        subprocess.run(["clang++","-std=c++14","-shared","-fPIC","-O2",str(tmp/"ref.cc"),"-o",str(lib)],check=True,capture_output=True)
+        lib=tmp/("ref.dylib" if sys.platform == "darwin" else "ref.so")
+        subprocess.run([compiler,"-std=c++14","-shared","-fPIC","-O2",str(tmp/"ref.cc"),"-o",str(lib)],check=True,capture_output=True)
         cls.lib=C.CDLL(str(lib))
         cls.lib.reference.argtypes=[C.c_char_p,C.c_int,C.c_int,C.c_int,C.c_void_p]
         cls.lib.reference.restype=C.c_int
@@ -83,9 +84,12 @@ extern "C" int reference(const char* psdu, int size, int enc, int seed, unsigned
 
 class ABITests(unittest.TestCase):
     def test_ctypes_structure_layout_matches_uhd_headers(self):
-        inc=Path('/opt/homebrew/opt/uhd/include')
-        if not (inc/'uhd/usrp/usrp.h').exists() or not shutil.which('clang++'):
-            self.skipTest('header UHD/clang assenti')
+        inc = next((p for p in map(Path, ('/opt/homebrew/opt/uhd/include',
+                    '/usr/local/opt/uhd/include', '/usr/local/include', '/usr/include'))
+                    if (p/'uhd/usrp/usrp.h').exists()), None)
+        compiler = shutil.which('cc') or shutil.which('clang') or shutil.which('gcc')
+        if inc is None or not compiler:
+            self.skipTest('UHD headers or C compiler unavailable')
         cpp='''
 #include <uhd/usrp/usrp.h>
 #include <stdio.h>
@@ -101,7 +105,7 @@ offsetof(uhd_tune_request_t,rf_freq),offsetof(uhd_tune_request_t,args));
         with tempfile.TemporaryDirectory() as tmp:
             src=Path(tmp)/'abi.c'; exe=Path(tmp)/'abi'
             src.write_text(cpp)
-            subprocess.run(['clang','-std=c11','-I'+str(inc),str(src),'-o',str(exe)],check=True,capture_output=True)
+            subprocess.run([compiler,'-std=c11','-I'+str(inc),str(src),'-o',str(exe)],check=True,capture_output=True)
             expected=[int(x) for x in subprocess.check_output([str(exe)]).split()]
         actual=[C.sizeof(m.StreamArgs),C.sizeof(m.StreamCmd),C.sizeof(m.TuneRequest),C.sizeof(m.TuneResult),
                 m.StreamArgs.n.offset,m.StreamCmd.secs.offset,m.TuneRequest.rf.offset,m.TuneRequest.args.offset]

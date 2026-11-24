@@ -516,9 +516,11 @@ class TuneResult(C.Structure):
 
 class UHD:
     def __init__(self, library=None):
-        candidates = [library, os.environ.get("UHD_LIBRARY"),
-                      "/opt/homebrew/opt/uhd/lib/libuhd.dylib",
-                      "/usr/local/opt/uhd/lib/libuhd.dylib", ctypes.util.find_library("uhd")]
+        candidates = [library, os.environ.get("UHD_LIBRARY")]
+        if sys.platform == "darwin":
+            candidates.extend(("/opt/homebrew/opt/uhd/lib/libuhd.dylib",
+                               "/usr/local/opt/uhd/lib/libuhd.dylib"))
+        candidates.append(ctypes.util.find_library("uhd"))
         errors = []
         for path in filter(None,candidates):
             try:
@@ -527,7 +529,10 @@ class UHD:
             except OSError as exc:
                 errors.append(str(exc))
         else:
-            raise RuntimeError("libuhd non trovata. Installa: brew install uhd\n" + "\n".join(errors))
+            install_hint = ("brew install uhd" if sys.platform == "darwin" else
+                            "sudo apt install libuhd-dev uhd-host (Debian/Ubuntu); see LINUX.md")
+            raise RuntimeError("libuhd not found. Install: " + install_hint +
+                               "\nOr set --uhd-library / UHD_LIBRARY to its path.\n" + "\n".join(errors))
         self.functions = {}
         def bind(name, *args):
             f = getattr(self.lib,"uhd_"+name)

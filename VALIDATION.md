@@ -77,3 +77,22 @@ After translating the documentation and terminal help into English:
   their local server because the execution sandbox denied binding to
   `127.0.0.1` (`PermissionError: [Errno 1] Operation not permitted`).
   Those two HTTP results were not revalidated in this run.
+
+## Linux port preparation checks
+
+- Added `start-linux.sh` with a separate `.venv-linux` environment, plus Linux
+  installation and USB setup instructions in LINUX.md.
+- Bash syntax and `git diff --check` passed.
+- A stub interpreter exercised six launcher argument combinations: default GUI,
+  help, self-test, demo, terminal-only RX, and GUI without automatic browser
+  opening on a specified port. Paths containing spaces, environment isolation
+  and the missing-Python diagnostic were also checked.
+- Mocked Linux library loading checked explicit path, environment override and
+  system discovery precedence, plus the Linux missing-library diagnostic.
+- The reference test supports clang++ or g++, a `.so` output on Linux, and UHD
+  headers in standard Linux include directories. Its encoding and ABI checks
+  passed on the development Mac after these changes.
+- The existing suite again ran 34 tests: 32 passed; the two HTTP tests were
+  blocked by the same sandbox restriction on binding a local server.
+- No Linux runtime or Linux B200 USB/RF validation was performed. These are
+  preparation checks on macOS, not evidence of Linux hardware interoperability.

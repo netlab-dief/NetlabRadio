@@ -1,5 +1,7 @@
 .venv/*
+.venv-linux/
 __pycache__/*
 uhd-images/*
+uhd-images-linux/
 *.pyc
 *.pcap
