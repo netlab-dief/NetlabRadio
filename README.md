@@ -39,7 +39,7 @@ B200 at the same time.
 
 ## GUI: controls from the original flowgraph
 
-The `Ieee80211P` window is recreated in the local browser. It is not the original
+The `NetlabRadio` window is recreated in the local browser. It is not the original
 Qt window and does not reproduce its theme, context menus or borders pixel for
 pixel. The data, control choices, control order and main plot correspond to
 those in `SDR/ieee80211p.py`:

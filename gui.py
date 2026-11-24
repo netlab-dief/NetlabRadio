@@ -377,7 +377,7 @@ def launch(args,modem):
     modem.LOG.addHandler(control)
     server=make_server(control,args.gui_port)
     url=f'http://127.0.0.1:{server.server_port}/'
-    print(f'GUI Ieee80211P: {url}',flush=True)
+    print(f'GUI NetlabRadio: {url}',flush=True)
     print('Ctrl-C nel terminale chiude GUI server e radio.',flush=True)
     thread=threading.Thread(target=server.serve_forever,daemon=True,name='gui-http')
     thread.start()
