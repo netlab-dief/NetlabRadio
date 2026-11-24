@@ -1,237 +1,242 @@
-# IEEE 802.11p su B200, senza GNU Radio
+# IEEE 802.11p on the B200, without GNU Radio
 
-Implementazione sperimentale autonoma in Python, NumPy e libuhd, con GUI locale
-nel browser. Nessun import di GNU Radio, gr-foo, gr-ieee802-11, Gqrx o gr-fosphor. Numba è opzionale per
-accelerare Viterbi; il lanciatore tenta di installarlo una volta.
+Experimental standalone implementation in Python, NumPy and libuhd, with a local
+browser GUI. It does not import GNU Radio, gr-foo, gr-ieee802-11, Gqrx or
+gr-fosphor. Numba is optional and accelerates Viterbi decoding; the launcher
+attempts to install it once.
 
-## Avvio
+## Getting started
 
-UHD è già presente sul Mac su cui è stato preparato il progetto. Su un altro Mac:
+UHD is already installed on the Mac used to prepare this project. On another Mac:
 
 ```sh
 brew install uhd python@3.13
 ```
 
-Dalla cartella di questo file:
+From the directory containing this file:
 
 ```sh
 ./avvia.command --self-test
 ./avvia.command --mode trx --freq 5860000000
 ```
 
-Il lanciatore crea un ambiente Python locale e installa NumPy al primo avvio
-(serve Internet soltanto per l'installazione). I successivi avvii riutilizzano
-l'ambiente. Un doppio clic su `avvia.command` apre la GUI nel browser predefinito
-e avvia RX e TX con i valori predefiniti. Se la B200 non è disponibile, la GUI
-rimane aperta e mostra l'errore; non sostituisce i dati radio con una simulazione.
-Se non trova le immagini UHD standard, scarica quelle B200 nella cartella
-`uhd-images` del programma, usando il downloader UHD installato (e `requests`).
-Il test software e `--help` non scaricano immagini e non aprono la radio.
-La prima esecuzione con Numba può impiegare qualche secondo per compilare il decoder.
-Non avviare contemporaneamente Gqrx o altri programmi che aprono la stessa B200.
+The launcher creates a local Python environment and installs NumPy on first use
+(Internet access is required only for installation). Subsequent launches reuse
+the environment. Double-clicking `avvia.command` opens the GUI in the default
+browser and starts RX and TX with the default settings. If the B200 is unavailable,
+the GUI stays open and displays the error; it does not substitute simulated data
+for radio data. If standard UHD images cannot be found, it downloads the B200
+images into the application's `uhd-images` directory using the installed UHD
+downloader (and `requests`). The software self-test and `--help` neither download
+images nor open the radio. The first run with Numba may take a few seconds to
+compile the decoder. Do not run Gqrx or other applications that open the same
+B200 at the same time.
 
-## GUI: controlli del flowgraph originale
+## GUI: controls from the original flowgraph
 
-La finestra `Ieee80211P` è ricostruita nel browser locale; non è la stessa
-finestra Qt e non ne riproduce pixel per pixel tema, menu contestuali o bordi.
-I dati, le scelte dei controlli, il loro ordine e il grafico principale
-corrispondono a quelli presenti in `SDR/ieee80211p.py`:
+The `Ieee80211P` window is recreated in the local browser. It is not the original
+Qt window and does not reproduce its theme, context menus or borders pixel for
+pixel. The data, control choices, control order and main plot correspond to
+those in `SDR/ieee80211p.py`:
 
-| Elemento | Riproduzione |
+| Element | Implementation |
 |---|---|
-| `tx_gain` | Slider e valore numerico 0..1, passo 0.01, default 1 |
+| `tx_gain` | Slider and numeric value, 0..1, step 0.01, default 1 |
 | `samp_rate` | 5 / 10 / 20 MHz, default 10 |
 | `lo_offset` | 0 / 6000000 / 11000000 Hz |
-| `gain` RX | Slider e valore numerico 0..1, passo 0.01, default 0.75 |
-| `freq` | Stessi 67 valori e stesse etichette canale/frequenza/11a-g-p |
-| `encoding` | Stessi 8 radio button BPSK, QPSK, 16QAM e 64QAM |
-| `chan_est` | LS / LMS / Linear Comb / STA, effettivamente collegati al decoder |
-| Costellazione | Ultimi 480 campioni sulle 48 sottoportanti dati, blu, assi I/Q −2..+2, refresh 100 ms |
-| `pdu_length` | Slider 0..1500, default 500; nessun generatore collegato, come nel flowgraph |
-| `interval` | Slider 100..10000, default 1000; nessun generatore collegato, come nel flowgraph |
+| RX `gain` | Slider and numeric value, 0..1, step 0.01, default 0.75 |
+| `freq` | The same 67 values and channel/frequency/11a-g-p labels |
+| `encoding` | The same eight BPSK, QPSK, 16QAM and 64QAM radio buttons |
+| `chan_est` | LS / LMS / Linear Comb / STA, connected to the decoder |
+| Constellation | Latest 480 samples from the 48 data subcarriers, blue, I/Q axes −2..+2, 100 ms refresh |
+| `pdu_length` | Slider 0..1500, default 500; no generator connected, as in the flowgraph |
+| `interval` | Slider 100..10000, default 1000; no generator connected, as in the flowgraph |
 
-Il grafico usa i simboli equalizzati prima del controllo FCS, nello stesso
-punto funzionale del collegamento `carrier` originale; quindi può mostrare
-costellazioni di frame il cui CRC non viene poi accettato. Non mostra l'IQ grezzo
-e non genera punti artificiali quando la radio non riceve pacchetti.
-La griglia e l'autoscale sono inizialmente disattivati, come nel flowgraph;
-si possono attivare dai controlli sotto il grafico. `Pausa grafico` congela
-soltanto la visualizzazione, lasciando attiva la radio.
+The plot uses equalized symbols before the FCS check, at the same functional
+point as the original `carrier` connection. It can therefore show constellations
+from frames that subsequently fail CRC validation. It does not show raw IQ or
+generate artificial points when the radio is not receiving packets.
+The grid and autoscaling are initially disabled, as in the flowgraph; they can
+be enabled using the controls below the plot. Pause plot (`Pausa grafico`)
+freezes only the display, leaving the radio running. GUI labels remain in Italian;
+their exact text is included below where needed to identify a control.
 
-I cambi di parametri vengono applicati al modem: frequenza, LO, sample rate ed
-equalizzatore ripartono da una nuova sincronizzazione; i blocchi IQ precedenti
-alla modifica vengono scartati. L'accesso UHD viene serializzato ai confini di
-lettura/burst. Non si cambia la configurazione mentre un thread usa lo stesso
-percorso radio. Un errore UHD ferma il modem e viene mostrato nella GUI.
+Parameter changes are applied to the modem: changes to frequency, LO, sample
+rate or equalizer restart synchronization, and IQ blocks captured before the
+change are discarded. UHD access is serialized at read/burst boundaries.
+Configuration is not changed while a thread is using the same radio path.
+A UHD error stops the modem and is displayed in the GUI.
 
-`Ferma` arresta RX/TX; `Avvia` riapre la radio. Ogni nuova acquisizione apre
-nuovamente il file PCAP in scrittura, sovrascrivendolo. Chiudere la sola scheda
-del browser non termina il server: usare `Ferma`, oppure Ctrl-C nel terminale
-per chiudere anche il programma.
+Stop (`Ferma`) stops RX/TX; Start (`Avvia`) reopens the radio. Each new capture
+reopens the PCAP file for writing, overwriting it. Closing the browser tab alone
+does not terminate the server: use Stop, or press Ctrl-C in the terminal to
+close the application as well.
 
-Per provare la GUI senza collegare la radio:
+To try the GUI without connecting a radio:
 
 ```sh
 ./avvia.command --gui-demo
 ```
 
-La simulazione è contrassegnata esplicitamente e utilizza il vero modem in
-loopback software con rumore/CFO. Non apre UHD, non trasmette RF e non scrive
-PCAP. Per il solo terminale, usare `./avvia.command --no-gui`.
-Eseguendo direttamente il Python, aggiungere `--gui` per la GUI:
+Simulation is explicitly labeled and uses the actual modem in software loopback
+with noise/CFO. It does not open UHD, transmit RF or write PCAP files.
+For terminal-only operation, use `./avvia.command --no-gui`.
+When running Python directly, add `--gui` to enable the GUI:
 
 ```sh
 python ieee80211p_native.py --gui
 ```
 
-La pagina e le API sono servite esclusivamente su `127.0.0.1`, senza risorse
-web esterne. Una porta libera viene scelta automaticamente; `--gui-port 8765`
-per sceglierne una esplicitamente e `--no-browser` per aprire manualmente l'URL.
+The page and APIs are served exclusively on `127.0.0.1`, without external web
+resources. An available port is selected automatically; use `--gui-port 8765`
+to select one explicitly, and `--no-browser` to open the URL manually.
 
-### Ampiezza dei segnali ricevuti
+### Received signal amplitude
 
-La vista predefinita è ora **Spettro · frequenza al centro banda**: l'asse X
-è la frequenza RF in MHz, fermo su `freq ± sample_rate/2`. Ad esempio, con
-centro 5860 MHz e 10 MS/s, l'asse va da 5855 a 5865 MHz. Una linea tratteggiata
-indica il centro banda. Cambiando `freq` si ricentra lo spettro; cambiando
-sample rate si aggiorna l'intervallo. L'asse non scorre con il tempo.
+The default view is **Spectrum · center frequency** (`Spettro · frequenza al
+centro banda`): the X axis shows RF frequency in MHz, fixed at
+`freq ± sample_rate/2`. For example, a center frequency of 5860 MHz and a sample
+rate of 10 MS/s give an axis from 5855 to 5865 MHz. A dashed line marks the
+center frequency. Changing `freq` recenters the spectrum; changing the sample
+rate updates the span. The axis does not scroll with time.
 
-La traccia blu è la FFT degli IQ grezzi del blocco conservato dal monitor.
-Si usano FFT complesse a 2048 punti, finestra Hann e media in potenza dei
-segmenti completi del blocco, senza sovrapposizione. Per blocchi più corti
-si riduce la FFT alla potenza di due disponibile. A 10 MS/s il passo dei bin
-è circa 4883 Hz; la larghezza equivalente della finestra Hann è circa
-1.5 bin. Non è un analizzatore di spettro con RBW calibrata.
+The blue trace is the FFT of the raw IQ block retained by the monitor.
+It uses 2048-point complex FFTs, a Hann window and power averaging over complete,
+non-overlapping segments of the block. For shorter blocks, the FFT size is
+reduced to the available power of two. At 10 MS/s the bin spacing is approximately
+4883 Hz; the equivalent noise bandwidth of the Hann window is approximately
+1.5 bins. This is not a spectrum analyzer with calibrated RBW.
 
-La normalizzazione è coerente in ampiezza: una sinusoide complessa di
-ampiezza 1 esattamente su un bin produce un picco di 0 dBFS/bin. Il livello
-per bin non è una densità spettrale per Hz e non è potenza RF in dBm.
-RMS e picco nei riquadri continuano invece a riferirsi ai campioni nel tempo.
-La scala iniziale è dBFS, con asse Y fisso da −120 a +6.
+Normalization preserves coherent amplitude: a complex sinusoid with amplitude 1
+exactly on a bin produces a peak of 0 dBFS/bin. The per-bin level is neither
+spectral density per Hz nor RF power in dBm. RMS and peak in the readouts still
+refer to time-domain samples. The initial scale is dBFS, with a fixed Y axis
+from −120 to +6.
 
-**Max hold** aggiunge la traccia arancione del massimo su ogni bin, conservato
-dall'inizio dell'acquisizione anche se la casella è disattivata. Viene resettato
-su reset, cambio di frequenza, sample rate o dimensione FFT. L'eventuale LO
-offset non viene sommato alle etichette: UHD ha già compensato tale offset
-nell'IQ restituito al programma.
+**Max hold** adds an orange trace showing the maximum for each bin, retained
+since the start of capture even when the checkbox is disabled. It resets on
+reset or a change of frequency, sample rate or FFT size. Any LO offset is not
+added to the labels: UHD has already compensated for that offset in the IQ
+samples returned to the application.
 
-Per la precedente vista a oscilloscopio selezionare **Ampiezza nel tempo**.
-Lo storico temporale è nascosto per default e si abilita con **Mostra storico
-temporale**; i controlli finestra fissa/scorrimento riguardano soltanto quello
-storico, non lo spettro RF.
+For the previous oscilloscope view, select **Amplitude over time** (`Ampiezza
+nel tempo`). Time history is hidden by default and can be enabled with
+**Show time history** (`Mostra storico temporale`). The fixed-window/scrolling
+controls apply only to that history, not to the RF spectrum.
 
-Il pannello **Segnale ricevuto · IQ grezzo** è collegato direttamente ai campioni
-restituiti da UHD, prima della coda di decodifica e della ricerca dei pacchetti.
-Funziona anche con rumore, trasmissioni non 802.11p o pacchetti non decodificabili.
-Non richiede che la costellazione o i contatori RX mostrino frame validi.
+The **Received signal · raw IQ** panel (`Segnale ricevuto · IQ grezzo`) is
+connected directly to the samples returned by UHD, before the decoding queue
+and packet detection. It also works with noise, non-802.11p transmissions and
+undecodable packets. It does not require valid frames in the constellation plot
+or RX counters.
 
-- Grafico dell'inviluppo `|I+jQ|` nel tempo, con scala lineare o dBFS.
-- RMS e picco, entrambi riportati come ampiezza numerica e in dBFS.
-- Storico RMS e picco degli ultimi dieci secondi.
-- Indicazione di campioni I/Q vicini al fondo scala digitale.
-- Pausa della sola visualizzazione dell'ampiezza, senza fermare RX/TX.
+- Time-domain envelope plot of `|I+jQ|`, with a linear or dBFS scale.
+- RMS and peak, both shown as numeric amplitude and in dBFS.
+- RMS and peak history for the latest ten seconds.
+- Indicator for I/Q samples close to digital full scale.
+- Independent amplitude-display pause, without stopping RX/TX.
 
-Il selettore **Storico temporale**, visibile attivando lo storico, offre due modalità:
+The **Time history** selector (`Storico temporale`), visible when history is
+enabled, offers two modes:
 
-- **Finestra fissa · 0–10 s**, predefinita: ogni punto rimane nella stessa
-  posizione, l'asse resta da 0 a 10 secondi e al termine riparte una nuova
-  scansione. La finestra riparte anche dopo reset o nuova acquisizione.
-- **Scorrimento · ultimi 10 s**: i punti precedenti scorrono verso sinistra
-  per mantenere visibili gli ultimi dieci secondi.
+- **Fixed window · 0–10 s** (`Finestra fissa · 0–10 s`), the default: each point
+  stays in the same position, the axis remains at 0–10 seconds, and a new sweep
+  starts at the end. The window also restarts after a reset or a new capture.
+- **Scrolling · latest 10 s** (`Scorrimento · ultimi 10 s`): earlier points move
+  left to keep the latest ten seconds visible.
 
-La casella **Scala Y fissa**, inizialmente attiva, mantiene l'ampiezza
-del grafico superiore tra 0 e 1.5 in scala lineare, oppure tra −120 e +6 dBFS.
-Disattivandola, il limite superiore si adatta al picco corrente. Lo storico
-RMS/picco mantiene sempre la scala −120..+6 dBFS.
-Per fermare completamente l'immagine usare **Pausa ampiezza**: i dati radio
-continuano a essere elaborati. Le opzioni sono di visualizzazione e non
-modificano la configurazione o l'acquisizione della B200.
+The **Fixed Y scale** checkbox (`Scala Y fissa`), initially enabled, keeps the
+upper plot's amplitude range at 0–1.5 on the linear scale, or −120 to +6 dBFS.
+When disabled, the upper limit follows the current peak. RMS/peak history always
+uses the −120..+6 dBFS scale. To freeze the entire amplitude display, use
+**Pause amplitude** (`Pausa ampiezza`); radio data continues to be processed.
+These display options do not change B200 configuration or capture.
 
-RMS e picco aggregano tutti i blocchi letti dalla radio tra due aggiornamenti,
-con cadenza massima di circa 10 Hz. Il grafico temporale visualizza il blocco
-con il picco maggiore dell'intervallo; il tempo in microsecondi si riferisce
-a quel blocco. La riduzione a 256 intervalli conserva minimo e massimo,
-così un impulso stretto non sparisce per semplice sottocampionamento grafico.
-Non è uno storico continuo di tutti i campioni e non ricostruisce campioni
-persi prima della consegna da UHD. Dopo un overflow o una riconfigurazione
-che resetta RX, la misura riparte da una nuova finestra.
+RMS and peak aggregate all blocks read from the radio between updates, at a
+maximum update rate of approximately 10 Hz. The time-domain plot displays the
+block with the highest peak in that interval; its time axis in microseconds
+refers to that block. Reduction to 256 intervals preserves minima and maxima,
+so a narrow pulse is not lost through simple display subsampling.
+This is not a continuous history of every sample, and it does not reconstruct
+samples lost before delivery by UHD. After an overflow or a reconfiguration
+that resets RX, measurement restarts with a new window.
 
-Definizioni: `RMS = sqrt(mean(I²+Q²))`, `picco = max(|I+jQ|)` e
-`dBFS = 20 log10(ampiezza)`, con riferimento ampiezza complessa 1.
-Le misure nulle sono rappresentate con un limite numerico di −160 dBFS;
-il grafico in dBFS ha un limite inferiore di −120 dBFS.
-L'indicatore di fondo scala controlla `max(|I|,|Q|) >= 0.999`: è un'indicazione
-sui campioni digitali consegnati da UHD, non una diagnosi certa di saturazione
-dell'ADC o del front end RF. I livelli non sono calibrati in dBm e dipendono
-anche dal gain RX impostato. Se il flusso si interrompe, la GUI segnala che
-l'ultima misura non è più live, mantenendo visibile l'ultima acquisizione.
+Definitions: `RMS = sqrt(mean(I²+Q²))`, `peak = max(|I+jQ|)` and
+`dBFS = 20 log10(amplitude)`, referenced to complex amplitude 1.
+Zero measurements use a numerical floor of −160 dBFS; the dBFS plot has a lower
+limit of −120 dBFS. The full-scale indicator checks
+`max(|I|,|Q|) >= 0.999`: it describes the digital samples delivered by UHD and is
+not a definitive diagnosis of ADC or RF front-end saturation. Levels are not
+calibrated in dBm and also depend on the configured RX gain. If the stream
+stops, the GUI indicates that the last measurement is no longer live while
+keeping the latest capture visible.
 
-Se è necessaria un'installazione manuale delle immagini firmware/FPGA,
-utilizzare il downloader fornito con UHD; per Homebrew si trova normalmente in:
+If firmware/FPGA images must be installed manually, use the downloader supplied
+with UHD. With Homebrew it is normally located at:
 
 ```sh
 python3 /opt/homebrew/opt/uhd/lib/uhd/utils/uhd_images_downloader.py
 ```
 
-Se il percorso predefinito delle immagini non è scrivibile:
+If the default image directory is not writable:
 
 ```sh
 python3 /opt/homebrew/opt/uhd/lib/uhd/utils/uhd_images_downloader.py --types b2xx --install-location "$PWD/uhd-images"
 UHD_IMAGES_DIR="$PWD/uhd-images" ./avvia.command
 ```
 
-Non installare un pacchetto PyPI chiamato `uhd`: il programma usa direttamente
-la libreria C installata da Homebrew. Il percorso può essere specificato con
-`--uhd-library /percorso/libuhd.dylib` oppure `UHD_LIBRARY`.
+Do not install a PyPI package named `uhd`: the application uses the C library
+installed by Homebrew directly. Its path can be specified with
+`--uhd-library /path/to/libuhd.dylib` or `UHD_LIBRARY`.
 
-## Collegamenti e formati
+## Connections and formats
 
-| Percorso | Comportamento |
+| Path | Behavior |
 |---|---|
-| UDP `127.0.0.1:52001` → B200 | Ogni datagramma è un payload MSDU, massimo 1500 byte; aggiunge header MAC DATA di 24 byte e FCS |
-| B200 → UDP `127.0.0.1:51001` | MPDU completo con header MAC, senza FCS: come il collegamento PHY→UDP del flowgraph originale |
-| B200 → `ieee80211p_rx.pcap` | Frame con FCS e header Radiotap, leggibile in Wireshark |
+| UDP `127.0.0.1:52001` → B200 | Each datagram is an MSDU payload, up to 1500 bytes; a 24-byte MAC DATA header and FCS are added |
+| B200 → UDP `127.0.0.1:51001` | Complete MPDU including the MAC header, without FCS, matching the original flowgraph's PHY→UDP connection |
+| B200 → `ieee80211p_rx.pcap` | Frames with FCS and a Radiotap header, readable in Wireshark |
 
-Il PCAP viene sovrascritto a ogni avvio. Usare `--pcap nome-diverso.pcap`
-per conservare acquisizioni precedenti. Le righe RX riportano CFO e una stima SNR;
-non sono misure RSSI calibrate.
+The PCAP file is overwritten on each start. Use `--pcap different-name.pcap`
+to preserve earlier captures. RX log lines report CFO and an SNR estimate;
+these are not calibrated RSSI measurements.
 
-Per inviare solo il payload DATA sulla porta di uscita usare `--rx-payload-only`.
-In tale modalità i frame non DATA e quelli cifrati vengono salvati in PCAP ma non
-inoltrati su UDP. Non sono implementati decifratura, deframmentazione e A-MSDU.
-Nella modalità predefinita non avviene nessuna di queste trasformazioni.
+To forward only the DATA payload to the output port, use `--rx-payload-only`.
+In this mode, non-DATA and encrypted frames are saved to PCAP but are not
+forwarded over UDP. Decryption, defragmentation and A-MSDU handling are not
+implemented. None of these transformations takes place in the default mode.
 
-La frequenza predefinita è 5860 MHz, il sample rate 10 MS/s, encoding 3
-(QPSK 3/4, 9 Mbit/s su canale 10 MHz). Source MAC `04:e5:48:20:3b:c8`,
-destination e BSSID broadcast, come nel file originale. Il `config.ini` originale
-non generava traffico nella catena connessa: l'ingresso effettivo è UDP.
+The defaults are 5860 MHz, 10 MS/s and encoding 3 (QPSK 3/4, 9 Mbit/s on a
+10 MHz channel). The source MAC is `04:e5:48:20:3b:c8`; destination and BSSID
+are broadcast, as in the original file. The original `config.ini` did not
+generate traffic in the connected chain: the actual input is UDP.
 
-Per RX e TX contemporanei, collegare l'antenna RX a **RX2** e l'antenna TX a
-**TX/RX**. Il flowgraph originale selezionava TX/RX anche per la ricezione;
-il programma usa RX2 come valore predefinito per poter mantenere i due percorsi.
-In ricezione soltanto si può usare `--mode rx --rx-antenna TX/RX`.
+For simultaneous RX and TX, connect the RX antenna to **RX2** and the TX antenna
+to **TX/RX**. The original flowgraph also selected TX/RX for reception; this
+application defaults to RX2 to keep both paths available. For receive-only
+operation, `--mode rx --rx-antenna TX/RX` can be used.
 
 ```sh
 ./avvia.command --freq 5890000000 --encoding 0 --rx-gain 0.75 --tx-gain 0.5
-./avvia.command --mode rx --pcap acquisizione.pcap
+./avvia.command --mode rx --pcap capture.pcap
 ./avvia.command --mode tx --tx-port 52001
 ./avvia.command --help
 ```
 
-I gain sono normalizzati tra 0 e 1, come negli USRP source/sink originali.
-L'ampiezza digitale di default è 0.15, distinta dal gain RF. In TX viene aggiunto
-padding nullo a ogni burst e controllato il BURST_ACK UHD; errori asincroni e
-timeout fermano il programma con un errore, senza conteggiare un TX riuscito.
+Gains are normalized to 0..1, as in the original USRP source/sink blocks.
+The default digital amplitude is 0.15, separate from RF gain. Each TX burst
+has zero padding, and the UHD BURST_ACK is checked. Asynchronous errors and
+timeouts stop the application with an error, without counting a successful TX.
 
-## Funzioni PHY
+## PHY features
 
-Preambolo STF/LTF, rilevamento pacchetto, stima CFO grossolana e fine,
-equalizzazione LS da LTF, correzione fase e pendenza dai piloti, L-SIG con
-parità, scrambler/descrambler, codice convoluzionale K=7 e Viterbi soft,
-puncturing, interleaving, BPSK/QPSK/16-QAM/64-QAM, OFDM FFT64 e CP16,
-FCS CRC32. Supporta tutti gli otto encoding legacy del flowgraph.
+STF/LTF preamble, packet detection, coarse and fine CFO estimation, LTF-based
+LS equalization, pilot-based phase and slope correction, L-SIG with parity,
+scrambling/descrambling, K=7 convolutional coding and soft Viterbi decoding,
+puncturing, interleaving, BPSK/QPSK/16-QAM/64-QAM, OFDM with FFT64 and CP16,
+and CRC32 FCS. All eight legacy encodings from the flowgraph are supported.
 
-| `--encoding` | Modulazione | Codice | Mbit/s a 10 MHz |
+| `--encoding` | Modulation | Code rate | Mbit/s at 10 MHz |
 |---|---|---|---|
 | 0 | BPSK | 1/2 | 3 |
 | 1 | BPSK | 3/4 | 4.5 |
@@ -242,52 +247,54 @@ FCS CRC32. Supporta tutti gli otto encoding legacy del flowgraph.
 | 6 | 64-QAM | 2/3 | 24 |
 | 7 | 64-QAM | 3/4 | 27 |
 
-Il sample rate può essere 5, 10 o 20 MS/s; FFT/CP restano identici e i tempi
-simbolo cambiano coerentemente. 802.11p corrisponde al valore 10 MS/s.
-La frequenza di centro è unica per TX e RX. Sono implementati LS, LMS decision
-directed (alpha 0.5), Linear Comb dai piloti (alpha 0.2) e STA (alpha 0.5,
-beta 2), seguendo le formule dei sorgenti forniti. La sincronizzazione e la
-correzione fase/pendenza dai piloti restano quelle del modem Python: non viene
-dichiarata equivalenza numerica bit per bit dell'intera ricezione GNU Radio.
-Non include Gqrx o il display GPU fosphor, che non compaiono nella GUI del
-flowgraph fornito.
+The sample rate can be 5, 10 or 20 MS/s; FFT/CP sizes remain unchanged and symbol
+durations scale accordingly. 802.11p corresponds to 10 MS/s. TX and RX share one
+center frequency. Implemented equalizers are LS, decision-directed LMS
+(alpha 0.5), pilot-based Linear Comb (alpha 0.2) and STA (alpha 0.5, beta 2),
+following the formulas in the supplied sources. Synchronization and pilot-based
+phase/slope correction remain those of the Python modem: no bit-for-bit numerical
+equivalence of the complete GNU Radio receiver is claimed.
+Gqrx and the fosphor GPU display are not included; neither appears in the supplied
+flowgraph's GUI.
 
-## Stato della validazione e limiti
+## Validation status and limitations
 
-Questa è una nuova implementazione del modem, non un sostituto già qualificato
-di gr-ieee802-11. Il test interno confronta TX e RX di questa implementazione;
-non basta da solo a dimostrare interoperabilità con una radio esterna.
-I test di regressione aggiungono errori FCS, pacchetti consecutivi, acquisizioni
-interrotte, PCAP e confronto delle funzioni di codifica con i sorgenti C++ forniti.
+This is a new modem implementation, not an already qualified replacement for
+gr-ieee802-11. The internal test compares this implementation's TX and RX; that
+alone does not demonstrate interoperability with an external radio.
+Regression tests additionally cover FCS errors, consecutive packets, interrupted
+captures, PCAP output, and comparison of encoding functions with the supplied
+C++ sources.
 
-La B200 non è stata rilevata nell'ambiente di sviluppo, quindi non sono stati
-validati streaming USB, emissione RF, sensibilità o interoperabilità con RSU/OBU.
-Per una prova di interoperabilità occorre verificare entrambe le direzioni
-con un apparato indipendente, inizialmente a encoding 0 e traffico ridotto.
+No B200 was detected in the development environment, so USB streaming, RF
+transmission, sensitivity and interoperability with RSUs/OBUs have not been
+validated. An interoperability test must check both directions against an
+independent device, initially at encoding 0 and with low traffic.
 
-Non sono implementati CSMA/CA, CCA, ACK/SIFS, ritrasmissioni MAC o DCC: neppure
-il flowgraph fornito realizzava questi protocolli. Non equivale a una scheda
-Wi-Fi OCB del kernel. Non implementa PHY HT/VHT/HE o LDPC.
+CSMA/CA, CCA, ACK/SIFS, MAC retransmissions and DCC are not implemented; the
+supplied flowgraph did not implement these protocols either. This application
+is not equivalent to a kernel OCB Wi-Fi interface. HT/VHT/HE PHYs and LDPC are
+not implemented.
 
-Il decoder Python richiede molto più tempo dell'airtime dei pacchetti. Il
-programma legge la radio in un thread separato, ha una coda IQ limitata e
-segnala overflow e blocchi scartati. Dopo ogni discontinuità riparte con una
-nuova sincronizzazione, senza concatenare campioni non contigui. Numba aiuta
-il decoder ma non garantisce real time a pieno carico. Non sono state misurate
-prestazioni della variante JIT se Numba non è disponibile nell'ambiente di test.
-I timestamp PCAP derivano dall'orologio UHD inizializzato sull'ora dell'host:
-non sono sincronizzazione GNSS/PPS né una base validata per misure di latenza.
+The Python decoder takes much longer than packet airtime. The application reads
+the radio in a separate thread, uses a bounded IQ queue, and reports overflows
+and dropped blocks. After every discontinuity, it restarts synchronization
+without concatenating non-contiguous samples. Numba helps the decoder but does
+not guarantee real-time operation at full load. JIT performance has not been
+measured when Numba is unavailable in the test environment.
+PCAP timestamps come from the UHD clock initialized to host time: they are
+neither GNSS/PPS synchronization nor a validated basis for latency measurements.
 
-## Test
+## Tests
 
 ```sh
 ./avvia.command --self-test
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Python >=3.10. `test_reference.py` usa opzionalmente clang++ e i sorgenti
-`../gr-ieee802-11` per verificare la codifica senza linkare GNU Radio.
-Il test ABI richiede gli header UHD Homebrew.
+Python >=3.10. `test_reference.py` optionally uses clang++ and the
+`../gr-ieee802-11` sources to verify encoding without linking GNU Radio.
+The ABI test requires the Homebrew UHD headers.
 
 Protocol tables and conventions derived from bastibl/gr-ieee802-11, copyright
 Bastian Bloessl, GPL-3.0-or-later. The standalone implementation is distributed

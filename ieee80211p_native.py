@@ -730,7 +730,7 @@ def run(args, control=None):
             # Compile before starting the radio; compilation must not starve RX.
             viterbi(np.zeros(48),True)
         else:
-            LOG.warning("Numba assente: decoder NumPy più lento. Per accelerare: python -m pip install numba")
+            LOG.warning("Numba unavailable: using the slower NumPy decoder. To accelerate: python -m pip install numba")
         if radio.rx:
             pcap = Pcap(args.pcap,args.freq,args.sample_rate)
             udp_out = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -811,7 +811,7 @@ def run(args, control=None):
                         counters["tx"] += 1
                     LOG.info("TX payload %d B",len(payload))
             start(transmit_worker)
-        LOG.info("Modalità %s, %.3f MHz, %.1f MS/s; Ctrl-C per fermare",args.mode,args.freq/1e6,args.sample_rate/1e6)
+        LOG.info("Mode %s, %.3f MHz, %.1f MS/s; Ctrl-C to stop",args.mode,args.freq/1e6,args.sample_rate/1e6)
         LOG.info("UDP TX %s:%d -> radio; radio -> UDP %s:%d; PCAP %s",args.tx_host,args.tx_port,args.rx_host,args.rx_port,args.pcap)
         if control is not None:
             control.ready()
@@ -907,36 +907,36 @@ def self_test():
             for pos in range(0,len(iq),511):
                 frames.extend(rx.feed(iq[pos:pos+511],1700000000+pos/10e6))
             if len(frames)!=1 or frames[0].psdu!=psdu or frames[0].encoding!=enc:
-                raise AssertionError(f"Loopback fallito enc={enc} size={size}: {len(frames)} frame, bad={rx.bad}")
+                raise AssertionError(f"Loopback failed enc={enc} size={size}: {len(frames)} frames, bad={rx.bad}")
             if abs(frames[0].cfo_hz-22000)>1000:
                 raise AssertionError("CFO estimate")
             count += 1
-    print(f"PASS: {count} frame TX/RX, 8 encoding, 0..1500 B, CFO/multipath/AWGN, chunk da 511 campioni.")
-    print("Test software interno: non dimostra interoperabilità RF con apparati 802.11p.")
+    print(f"PASS: {count} TX/RX frames, 8 encodings, 0..1500 B, CFO/multipath/AWGN, 511-sample chunks.")
+    print("Internal software test: does not demonstrate RF interoperability with 802.11p devices.")
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--self-test",action="store_true")
-    p.add_argument("--gui",action="store_true",help="Apri la GUI locale con i controlli del flowgraph originale")
-    p.add_argument("--no-gui",action="store_true",help="Esecuzione da terminale")
-    p.add_argument("--gui-demo",action="store_true",help="GUI con loopback software esplicitamente simulato, senza radio")
-    p.add_argument("--no-browser",action="store_true",help="Non aprire automaticamente il browser")
-    p.add_argument("--gui-port",type=int,default=0,help="Porta HTTP locale; 0 assegna una porta libera")
+    p.add_argument("--gui",action="store_true",help="Open the local GUI with the original flowgraph controls")
+    p.add_argument("--no-gui",action="store_true",help="Run in the terminal")
+    p.add_argument("--gui-demo",action="store_true",help="GUI with explicitly simulated software loopback, without a radio")
+    p.add_argument("--no-browser",action="store_true",help="Do not open the browser automatically")
+    p.add_argument("--gui-port",type=int,default=0,help="Local HTTP port; 0 selects an available port")
     p.add_argument("--mode",choices=("rx","tx","trx"),default="trx")
     p.add_argument("--freq",type=float,default=5860e6)
     p.add_argument("--sample-rate",type=float,choices=(5e6,10e6,20e6),default=10e6)
     p.add_argument("--device",default="type=b200")
     p.add_argument("--uhd-library")
-    p.add_argument("--rx-gain",type=float,default=0.75,help="Gain normalizzato 0..1")
-    p.add_argument("--tx-gain",type=float,default=1.0,help="Gain normalizzato 0..1")
-    p.add_argument("--rx-antenna",default="RX2",help="RX2 per RX/TX contemporanei sulla B200")
+    p.add_argument("--rx-gain",type=float,default=0.75,help="Normalized gain, 0..1")
+    p.add_argument("--tx-gain",type=float,default=1.0,help="Normalized gain, 0..1")
+    p.add_argument("--rx-antenna",default="RX2",help="RX2 for simultaneous RX/TX on the B200")
     p.add_argument("--tx-antenna",default="TX/RX")
     p.add_argument("--lo-offset",type=float,default=0)
     p.add_argument("--encoding",type=int,choices=range(8),default=3)
     p.add_argument("--chan-est",type=int,choices=range(4),default=0)
-    p.add_argument("--pdu-length",type=int,default=500,help="Controllo originale senza generatore collegato")
-    p.add_argument("--interval",type=int,default=1000,help="Controllo originale senza generatore collegato")
+    p.add_argument("--pdu-length",type=int,default=500,help="Original control with no generator connected")
+    p.add_argument("--interval",type=int,default=1000,help="Original control with no generator connected")
     p.add_argument("--amplitude",type=float,default=0.15)
     p.add_argument("--threshold",type=float,default=0.72)
     p.add_argument("--src",type=parse_mac,default=bytes.fromhex("04e548203bc8"))
@@ -953,14 +953,14 @@ def main():
     args = p.parse_args()
     for name in ("rx_gain","tx_gain"):
         if not 0<=getattr(args,name)<=1:
-            p.error("gain deve essere tra 0 e 1")
+            p.error("gain must be between 0 and 1")
     if not 0<args.amplitude<=1 or not 0<args.threshold<1:
         p.error("amplitude in (0,1], threshold in (0,1)")
     if args.block_size<1024 or args.queue_blocks<1:
-        p.error("block-size >=1024 e queue-blocks >=1")
+        p.error("block-size >=1024 and queue-blocks >=1")
     for port in (args.tx_port,args.rx_port):
         if not 1<=port<=65535:
-            p.error("porta UDP deve essere 1..65535")
+            p.error("UDP port must be 1..65535")
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
     if args.self_test:
         self_test()
