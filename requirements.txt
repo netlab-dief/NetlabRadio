@@ -1,0 +1,2 @@
+numpy>=1.24
+# Optional performance dependency: pip install numba

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="it">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ieee80211P</title>
+<style>
+:root{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#181818;background:#ededed;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding:12px}main{max-width:1140px;margin:auto}button,select,input{font:inherit;color:inherit}
+button,select,input[type=number]{background:#fff;border:1px solid #b8b8b8;border-radius:4px;padding:4px 8px}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}
+.toolbar{display:flex;align-items:center;gap:9px;padding:0 0 12px}.toolbar h1{font-size:17px;font-weight:600;margin:0 auto 0 0}.status{padding:5px 9px;background:#ddd;border-radius:4px}.status.active{background:#d7eddb}.status.demo{background:#fff0bd}
+.slider-row{display:grid;grid-template-columns:95px 100px 1fr;gap:12px;align-items:center;min-height:40px}.slider-row input[type=number]{width:100%}input[type=range]{width:100%;accent-color:#1774ce;margin:0}
+.combo-row{display:flex;align-items:center;gap:12px;min-height:39px}.combo-row label{width:95px}.combo-row select{min-width:160px}#freq{min-width:250px}
+fieldset{border:1px solid #b8b8b8;border-radius:5px;padding:9px 12px;margin:7px 0 10px}legend{padding:0 5px}fieldset .radios{display:flex;gap:22px;flex-wrap:wrap}.radios label{display:flex;align-items:center;gap:5px;white-space:nowrap}input[type=radio]{accent-color:#1774ce;margin:0}
+.plot-box{position:relative;border:1px solid #aaa;background:#fff;margin:10px 0 6px;height:400px}canvas{width:100%;height:100%;display:block}.plot-tools{display:flex;gap:12px;align-items:center;margin-bottom:3px;font-size:12px}.plot-tools label{display:flex;align-items:center;gap:4px}.plot-tools span{margin-left:auto;color:#555}
+.footer{font-size:12px;color:#555;border-top:1px solid #ccc;padding-top:9px;margin-top:9px;line-height:1.8;overflow-wrap:anywhere}.hint{color:#666;font-size:11px;margin:2px 0 8px 107px}.error{white-space:pre-wrap;background:#ffdfdf;color:#821a1a;border:1px solid #dda4a4;padding:10px;margin:8px 0}.error:empty{display:none}
+.signal-panel{border-top:1px solid #bbb;margin-top:16px;padding-top:10px}.signal-panel h2{font-size:15px;margin:0 0 10px}.signal-panel .plot-box{height:230px}.signal-panel .history-box{height:185px}.signal-levels{display:flex;gap:10px;flex-wrap:wrap;margin:9px 0;font-variant-numeric:tabular-nums}.signal-levels span{background:#fff;border:1px solid #ccc;border-radius:4px;padding:7px 10px}.signal-levels span.warning{background:#ffdfcc;color:#862b00;border-color:#d99b72}.signal-note{font-size:11px;color:#555;line-height:1.6;margin:5px 0 8px}
+details{margin-top:8px}pre{font:11px ui-monospace,monospace;background:#fafafa;border:1px solid #ccc;padding:10px;max-height:180px;overflow:auto;white-space:pre-wrap}.metric{font-variant-numeric:tabular-nums}#pending{color:#745712;margin-left:8px}
+@media(max-width:650px){body{padding:8px}.slider-row{grid-template-columns:75px 75px 1fr;gap:7px}.toolbar{flex-wrap:wrap}fieldset .radios{gap:13px}.plot-box{height:320px}.hint{margin-left:0}.plot-tools{flex-wrap:wrap}}
+</style>
+<main>
+<div class="toolbar"><h1>Ieee80211P</h1><span id="status" class="status">Connessione…</span><button id="start">Avvia</button><button id="stop">Ferma</button></div>
+<div id="error" class="error" role="alert"></div>
+<div class="slider-row"><label for="tx_gain">'tx_gain'</label><input id="tx_gain" type="number" min="0" max="1" step="0.01" value="1"><input data-range="tx_gain" aria-label="tx_gain slider" type="range" min="0" max="1" step="0.01" value="1"></div>
+<div class="combo-row"><label for="sample_rate">'samp_rate':</label><select id="sample_rate"><option value="5000000">5 MHz</option><option value="10000000" selected>10 MHz</option><option value="20000000">20 MHz</option></select></div>
+<div class="combo-row"><label for="lo_offset">'lo_offset':</label><select id="lo_offset"><option value="0">0</option><option value="6000000">6000000.0</option><option value="11000000">11000000.0</option></select></div>
+<div class="slider-row"><label for="rx_gain">'gain'</label><input id="rx_gain" type="number" min="0" max="1" step="0.01" value="0.75"><input data-range="rx_gain" aria-label="gain slider" type="range" min="0" max="1" step="0.01" value="0.75"></div>
+<div class="combo-row"><label for="freq">'freq':</label><select id="freq"></select><span id="pending"></span></div>
+<fieldset><legend>'encoding'</legend><div class="radios" id="encodings"></div></fieldset>
+<fieldset><legend>'chan_est'</legend><div class="radios" id="equalizers"></div></fieldset>
+<div class="plot-box"><canvas id="constellation" aria-label="Costellazione I/Q: fino a 480 campioni equalizzati, assi da meno 2 a 2"></canvas></div>
+<div class="plot-tools"><label><input id="freeze" type="checkbox">Pausa grafico</label><label><input id="grid" type="checkbox">Griglia</label><label><input id="autoscale" type="checkbox">Autoscale</label><span id="point_count">0 / 480 punti · 100 ms</span></div>
+<section class="signal-panel" aria-label="Ampiezza del segnale ricevuto">
+<h2>Segnale ricevuto · IQ grezzo</h2>
+<div class="plot-tools"><label for="amplitude_scale">Scala:</label><select id="amplitude_scale"><option value="linear">Ampiezza |I+jQ|</option><option value="dbfs">dBFS</option></select><label><input id="amplitude_freeze" type="checkbox">Pausa ampiezza</label><span id="signal_status">In attesa di campioni ricevuti</span></div>
+<div class="plot-tools"><label for="amplitude_time_mode">Andamento nel tempo:</label><select id="amplitude_time_mode"><option value="fixed" selected>Finestra fissa · 0–10 s</option><option value="scroll">Scorrimento · ultimi 10 s</option></select><label><input id="amplitude_fixed_y" type="checkbox" checked>Scala Y fissa</label><span id="time_mode_hint">I punti restano fermi; a 10 s riparte una nuova finestra.</span></div>
+<div class="signal-levels"><span id="rms_level">RMS: —</span><span id="peak_level">Picco: —</span><span id="full_scale">Fondo scala I/Q: —</span></div>
+<div class="plot-box"><canvas id="amplitude" aria-label="Ampiezza IQ ricevuta nel tempo, prima della decodifica"></canvas></div>
+<div class="plot-box history-box"><canvas id="level_history" aria-label="Andamento RMS e picco, finestra fissa da zero a dieci secondi"></canvas></div>
+<p class="signal-note">IQ dalla radio, prima del rilevamento dei pacchetti. RMS e picco includono tutti i blocchi letti nell’intervallo di aggiornamento; il grafico superiore conserva il blocco con il picco maggiore, con inviluppo minimo/massimo. 0 dBFS corrisponde ad ampiezza complessa 1: non è una misura calibrata in dBm.</p>
+</section>
+<div class="slider-row" title="Variabile non collegata a un generatore nel flowgraph originale"><label for="pdu_length">'pdu_length'</label><input id="pdu_length" type="number" min="0" max="1500" step="1" value="500"><input data-range="pdu_length" aria-label="pdu_length slider" type="range" min="0" max="1500" step="1" value="500"></div>
+<div class="slider-row" title="Variabile non collegata a un generatore nel flowgraph originale"><label for="interval">'interval'</label><input id="interval" type="number" min="100" max="10000" step="1" value="1000"><input data-range="interval" aria-label="interval slider" type="range" min="100" max="10000" step="1" value="1000"></div>
+<p class="hint">pdu_length e interval mantengono le variabili originali; il traffico TX entra tramite UDP.</p>
+<div class="footer"><div id="counts" class="metric">RX 0 · TX 0 · Overflow 0 · Blocchi persi 0</div><div id="frame" class="metric">In attesa di simboli OFDM ricevuti.</div><div id="paths"></div></div>
+<details><summary>Log</summary><pre id="logs"></pre></details>
+</main>
+<script>
+'use strict';
+const metadata=__GUI_METADATA__;
+const $=id=>document.getElementById(id);
+let initialized=false,busy=false,editTimer=null,version=-1,points=[],lastState=null;
+let signalData=null,signalVersion=-1;
+const names=['tx_gain','sample_rate','lo_offset','rx_gain','freq','encoding','chan_est','pdu_length','interval'];
+for(const [freq,label] of metadata.channels){const opt=document.createElement('option');opt.value=freq;opt.textContent=label;$('freq').append(opt);}
+for(const [target,name,labels] of [['encodings','encoding',metadata.encodings],['equalizers','chan_est',metadata.equalizers]]){
+ labels.forEach((label,i)=>{const wrapper=document.createElement('label');const input=document.createElement('input');input.type='radio';input.name=name;input.value=i;input.addEventListener('change',scheduleEdit);wrapper.append(input,document.createTextNode(label));$(target).append(wrapper);});
+}
+for(const name of names.filter(n=>!['encoding','chan_est'].includes(n))){
+ const widget=$(name),range=document.querySelector(`[data-range="${name}"]`);
+ widget.addEventListener('input',()=>{if(range)range.value=widget.value;scheduleEdit();});
+ if(range)range.addEventListener('input',()=>{widget.value=range.value;scheduleEdit();});
+}
+function readConfig(){const out={};for(const n of names){const el=['encoding','chan_est'].includes(n)?document.querySelector(`input[name="${n}"]:checked`):$(n);out[n]=Number(el.value);}return out;}
+function fillConfig(config){for(const n of names){if(['encoding','chan_est'].includes(n)){document.querySelector(`input[name="${n}"][value="${config[n]}"]`).checked=true;}else{$(n).value=config[n];const range=document.querySelector(`[data-range="${n}"]`);if(range)range.value=config[n];}}}
+async function action(action,settings){const r=await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json','X-Control-Token':metadata.token},body:JSON.stringify({action,settings})});const body=await r.json();if(!r.ok)throw Error(body.error||r.statusText);}
+function scheduleEdit(){clearTimeout(editTimer);$('pending').textContent='Modifica…';editTimer=setTimeout(async()=>{try{await action('configure',readConfig());$('error').textContent='';}catch(e){$('error').textContent=e.message;}},180);}
+$('start').onclick=async()=>{try{clearTimeout(editTimer);await action('configure',readConfig());await action('start');}catch(e){$('error').textContent=e.message;}};
+$('stop').onclick=async()=>{try{await action('stop');}catch(e){$('error').textContent=e.message;}};
+function draw(){
+ const canvas=$('constellation'),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+ const w=Math.max(220,rect.width),h=Math.max(200,rect.height);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+ const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+ const left=61,right=25,top=20,bottom=46,pw=w-left-right,ph=h-top-bottom;
+ let limit=2;if($('autoscale').checked&&points.length)limit=Math.max(.25,...points.flat().map(Math.abs))*1.12;
+ const px=x=>left+(x+limit)/(2*limit)*pw,py=y=>top+(limit-y)/(2*limit)*ph;
+ ctx.font='12px -apple-system, sans-serif';ctx.fillStyle='#333';ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.strokeRect(left,top,pw,ph);
+ for(let i=0;i<=8;i++){
+  const v=-limit+i*limit/4,x=px(v),y=py(v);
+  if($('grid').checked){ctx.strokeStyle='#ddd';ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,top+ph);ctx.moveTo(left,y);ctx.lineTo(left+pw,y);ctx.stroke();}
+  ctx.strokeStyle='#333';ctx.beginPath();ctx.moveTo(x,top+ph);ctx.lineTo(x,top+ph+5);ctx.moveTo(left-5,y);ctx.lineTo(left,y);ctx.stroke();
+  ctx.textAlign='center';ctx.fillText(Number(v.toFixed(2)).toString(),x,top+ph+20);ctx.textAlign='right';ctx.fillText(Number(v.toFixed(2)).toString(),left-9,y+4);
+ }
+ ctx.textAlign='center';ctx.fillText('In-phase',left+pw/2,h-7);ctx.save();ctx.translate(15,top+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText('Quadrature',0,0);ctx.restore();
+ ctx.save();ctx.beginPath();ctx.rect(left,top,pw,ph);ctx.clip();ctx.fillStyle='blue';
+ for(const [re,im] of points){ctx.beginPath();ctx.arc(px(re),py(im),1.5,0,2*Math.PI);ctx.fill();}ctx.restore();
+ ctx.fillStyle='blue';ctx.fillRect(left+pw-76,top+11,5,5);ctx.fillStyle='#333';ctx.textAlign='left';ctx.fillText('Data 0',left+pw-65,top+18);
+ $('point_count').textContent=`${points.length} / 480 punti · 100 ms`;
+}
+function chartFrame(id,xmin,xmax,ymin,ymax,xlabel,ylabel){
+ const canvas=$(id),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+ const w=Math.max(220,rect.width),h=Math.max(160,rect.height);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+ const c=canvas.getContext('2d');c.scale(dpr,dpr);c.fillStyle='#fff';c.fillRect(0,0,w,h);
+ const left=64,top=18,pw=w-left-23,ph=h-top-43;
+ const px=x=>left+(x-xmin)/(xmax-xmin)*pw,py=y=>top+(ymax-y)/(ymax-ymin)*ph;
+ c.font='11px -apple-system, sans-serif';c.lineWidth=1;c.strokeStyle='#bbb';c.strokeRect(left,top,pw,ph);
+ for(let i=0;i<=5;i++){
+  const x=xmin+(xmax-xmin)*i/5,y=ymin+(ymax-ymin)*i/5;
+  c.strokeStyle='#eee';c.beginPath();c.moveTo(px(x),top);c.lineTo(px(x),top+ph);c.moveTo(left,py(y));c.lineTo(left+pw,py(y));c.stroke();
+  c.fillStyle='#444';c.textAlign='center';c.fillText(Number(x.toFixed(1)).toString(),px(x),top+ph+17);c.textAlign='right';c.fillText(Number(y.toFixed(2)).toString(),left-8,py(y)+4);
+ }
+ c.textAlign='center';c.fillText(xlabel,left+pw/2,h-5);c.save();c.translate(14,top+ph/2);c.rotate(-Math.PI/2);c.fillText(ylabel,0,0);c.restore();
+ return {c,px,py,left,top,pw,ph};
+}
+function drawSignal(){
+ const last=signalData?.latest,db=$('amplitude_scale').value==='dbfs';
+ const toDb=x=>Math.max(-160,20*Math.log10(Math.max(x,1e-8)));
+ const fixedY=$('amplitude_fixed_y').checked;
+ const upper=db?(fixedY?6:Math.max(6,(last?.peak_dbfs??0)+3)):(fixedY?1.5:Math.max(1.05,(last?.peak??0)*1.12));
+ const scope=chartFrame('amplitude',0,last?.duration_us||1,db?-120:0,upper,'Tempo nel blocco (µs)',db?'Ampiezza (dBFS)':'Ampiezza |IQ|');
+ const {c,px,py,left,top,pw,ph}=scope;
+ if(last){
+  c.save();c.beginPath();c.rect(left,top,pw,ph);c.clip();c.fillStyle='rgba(23,116,206,.22)';c.strokeStyle='#1774ce';c.lineWidth=1;
+  c.beginPath();last.waveform.forEach(([t,low,high],i)=>{const x=px(t),y=py(db?toDb(high):high);if(i)c.lineTo(x,y);else c.moveTo(x,y);});
+  [...last.waveform].reverse().forEach(([t,low])=>c.lineTo(px(t),py(db?toDb(low):low)));c.closePath();c.fill();
+  c.beginPath();last.waveform.forEach(([t,low,high],i)=>{const x=px(t),y=py(db?toDb(high):high);if(i)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();
+  c.strokeStyle='#aaa';c.setLineDash([4,4]);c.beginPath();c.moveTo(left,py(db?0:1));c.lineTo(left+pw,py(db?0:1));c.stroke();c.restore();
+ }
+ const fixed=$('amplitude_time_mode').value==='fixed';
+ const history=chartFrame('level_history',fixed?0:-10,fixed?10:0,-120,6,fixed?'Tempo nella finestra fissa (s)':'Tempo rispetto all’ultimo aggiornamento (s)','Livello (dBFS)');
+ $('level_history').setAttribute('aria-label',fixed?'Andamento RMS e picco, finestra fissa da zero a dieci secondi':'Andamento RMS e picco, scorrimento degli ultimi dieci secondi');
+ $('time_mode_hint').textContent=fixed?'I punti restano fermi; a 10 s riparte una nuova finestra.':'Lo storico scorre mantenendo gli ultimi 10 secondi.';
+ const hc=history.c;hc.save();hc.beginPath();hc.rect(history.left,history.top,history.pw,history.ph);hc.clip();
+ const rows=(fixed?signalData?.fixed_history:signalData?.history)||[];
+ for(const [column,color] of [[1,'#1774ce'],[2,'#d17400']]){
+  hc.strokeStyle=color;hc.fillStyle=color;hc.lineWidth=1.5;hc.beginPath();rows.forEach((row,i)=>{const x=history.px(row[0]),y=history.py(row[column]);if(i)hc.lineTo(x,y);else hc.moveTo(x,y);});hc.stroke();
+  for(const row of rows){hc.beginPath();hc.arc(history.px(row[0]),history.py(row[column]),1.7,0,2*Math.PI);hc.fill();}
+ }
+ hc.restore();hc.textAlign='right';hc.fillStyle='#1774ce';hc.fillText('RMS',history.left+history.pw-55,history.top+14);hc.fillStyle='#d17400';hc.fillText('Picco',history.left+history.pw-8,history.top+14);
+ if(last){
+  $('rms_level').textContent=`RMS: ${last.rms.toFixed(5)} · ${last.rms_dbfs.toFixed(1)} dBFS`;
+  $('peak_level').textContent=`Picco: ${last.peak.toFixed(5)} · ${last.peak_dbfs.toFixed(1)} dBFS`;
+  $('full_scale').textContent=last.near_full_scale?'I/Q vicino al fondo scala':'I/Q sotto il fondo scala';
+  $('full_scale').className=last.near_full_scale?'warning':'';
+ }else{
+  $('rms_level').textContent='RMS: —';$('peak_level').textContent='Picco: —';$('full_scale').textContent='Fondo scala I/Q: —';$('full_scale').className='';
+ }
+}
+async function poll(){
+ if(busy)return;busy=true;
+ try{
+  const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const s=await r.json();lastState=s;
+  if(!initialized){fillConfig(s.config);initialized=true;}
+  $('status').textContent=s.status;$('status').className='status'+(s.demo?' demo':s.ready?' active':'');
+  $('start').disabled=s.running;$('stop').disabled=!s.running;
+  $('error').textContent=s.error;
+  $('pending').textContent=names.some(n=>s.config[n]!==s.applied[n])?'Applicazione…':'';
+  const c=s.counters;$('counts').textContent=`RX ${c.rx} · TX ${c.tx} · Overflow ${c.overflow} · Blocchi persi ${c.dropped} · Sync/FCS scartati ${c.crc_or_sync} · Coda IQ ${s.queue_depth}`;
+  if(s.frame.bytes!==undefined)$('frame').textContent=`Ultimo frame: ${s.frame.bytes} B · ${metadata.encodings[s.frame.encoding]} · CFO ${s.frame.cfo_hz} Hz · SNR ≈ ${s.frame.snr_db} dB`;
+  $('paths').textContent=s.demo?'SIMULAZIONE ESPLICITA: loopback software, nessun accesso radio, nessuna scrittura PCAP.':`UDP TX ${s.udp_tx} → radio · radio → UDP ${s.udp_rx} · PCAP: ${s.pcap}`;
+  $('logs').textContent=s.logs.join('\n');
+  if(!$('freeze').checked&&version!==s.version){version=s.version;points=s.points;draw();}
+  if(!$('amplitude_freeze').checked){
+   signalData=s.signal;
+   if(signalVersion!==s.signal.version){signalVersion=s.signal.version;drawSignal();}
+   const last=s.signal.latest;
+   $('signal_status').textContent=!last?'In attesa di campioni ricevuti':last.age_s>.5?`Ultima misura ${last.age_s.toFixed(1)} s fa · non live`:`${s.demo?'IQ simulato':'IQ ricevuto'} · ${last.samples.toLocaleString('it-IT')} campioni · 100 ms`;
+  }else{$('signal_status').textContent='Visualizzazione ampiezza in pausa';}
+ }catch(e){$('status').textContent='Server non raggiungibile';$('error').textContent=e.message;}
+ finally{busy=false;}
+}
+for(const n of ['grid','autoscale'])$(n).addEventListener('change',draw);
+$('freeze').addEventListener('change',()=>{if(!$('freeze').checked)version=-1;});
+window.addEventListener('resize',draw);draw();poll();setInterval(poll,100);
+window.addEventListener('resize',drawSignal);$('amplitude_scale').addEventListener('change',drawSignal);
+for(const id of ['amplitude_time_mode','amplitude_fixed_y'])$(id).addEventListener('change',drawSignal);
+$('amplitude_freeze').addEventListener('change',()=>{if(!$('amplitude_freeze').checked)signalVersion=-1;});drawSignal();
+</script>
+</html>
