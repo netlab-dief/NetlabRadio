@@ -90,6 +90,36 @@ per sceglierne una esplicitamente e `--no-browser` per aprire manualmente l'URL.
 
 ### Ampiezza dei segnali ricevuti
 
+La vista predefinita è ora **Spettro · frequenza al centro banda**: l'asse X
+è la frequenza RF in MHz, fermo su `freq ± sample_rate/2`. Ad esempio, con
+centro 5860 MHz e 10 MS/s, l'asse va da 5855 a 5865 MHz. Una linea tratteggiata
+indica il centro banda. Cambiando `freq` si ricentra lo spettro; cambiando
+sample rate si aggiorna l'intervallo. L'asse non scorre con il tempo.
+
+La traccia blu è la FFT degli IQ grezzi del blocco conservato dal monitor.
+Si usano FFT complesse a 2048 punti, finestra Hann e media in potenza dei
+segmenti completi del blocco, senza sovrapposizione. Per blocchi più corti
+si riduce la FFT alla potenza di due disponibile. A 10 MS/s il passo dei bin
+è circa 4883 Hz; la larghezza equivalente della finestra Hann è circa
+1.5 bin. Non è un analizzatore di spettro con RBW calibrata.
+
+La normalizzazione è coerente in ampiezza: una sinusoide complessa di
+ampiezza 1 esattamente su un bin produce un picco di 0 dBFS/bin. Il livello
+per bin non è una densità spettrale per Hz e non è potenza RF in dBm.
+RMS e picco nei riquadri continuano invece a riferirsi ai campioni nel tempo.
+La scala iniziale è dBFS, con asse Y fisso da −120 a +6.
+
+**Max hold** aggiunge la traccia arancione del massimo su ogni bin, conservato
+dall'inizio dell'acquisizione anche se la casella è disattivata. Viene resettato
+su reset, cambio di frequenza, sample rate o dimensione FFT. L'eventuale LO
+offset non viene sommato alle etichette: UHD ha già compensato tale offset
+nell'IQ restituito al programma.
+
+Per la precedente vista a oscilloscopio selezionare **Ampiezza nel tempo**.
+Lo storico temporale è nascosto per default e si abilita con **Mostra storico
+temporale**; i controlli finestra fissa/scorrimento riguardano soltanto quello
+storico, non lo spettro RF.
+
 Il pannello **Segnale ricevuto · IQ grezzo** è collegato direttamente ai campioni
 restituiti da UHD, prima della coda di decodifica e della ricerca dei pacchetti.
 Funziona anche con rumore, trasmissioni non 802.11p o pacchetti non decodificabili.
@@ -101,7 +131,7 @@ Non richiede che la costellazione o i contatori RX mostrino frame validi.
 - Indicazione di campioni I/Q vicini al fondo scala digitale.
 - Pausa della sola visualizzazione dell'ampiezza, senza fermare RX/TX.
 
-Il selettore **Andamento nel tempo** offre due modalità:
+Il selettore **Storico temporale**, visibile attivando lo storico, offre due modalità:
 
 - **Finestra fissa · 0–10 s**, predefinita: ogni punto rimane nella stessa
   posizione, l'asse resta da 0 a 10 secondi e al termine riparte una nuova

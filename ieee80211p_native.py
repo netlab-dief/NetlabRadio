@@ -752,7 +752,7 @@ def run(args, control=None):
                             continue
                         if control is not None:
                             # Raw IQ tap precedes the decode queue and packet detection.
-                            control.samples(iq,args.sample_rate,ts,error==8)
+                            control.samples(iq,args.sample_rate,ts,error==8,center_freq=args.freq)
                         try:
                             iq_queue.put_nowait((iq,ts,discontinuity))
                             discontinuity = False

@@ -47,9 +47,36 @@ class SignalMonitor:
         self.last_emit=None
         self.origin=None
         self.latest=None
+        self.spectrum_peak=None
+        self.spectrum_key=None
         self.version+=1
 
-    def feed(self,iq,sample_rate,timestamp=None,gap=False,now=None):
+    def spectrum(self,iq,sample_rate,center_freq):
+        """Averaged two-sided complex FFT, Hann, coherent amplitude normalization.
+
+        An on-bin unit complex tone has a 0 dBFS/bin peak. This is not dBm or
+        a power spectral density per Hz. The LO offset is already removed by UHD.
+        """
+        np=self.np
+        nfft=min(2048,1<<(len(iq).bit_length()-1))
+        nframes=len(iq)//nfft
+        window=np.hanning(nfft) if nfft>=4 else np.ones(nfft)
+        frames=np.asarray(iq[:nframes*nfft]).reshape(nframes,nfft)
+        transformed=np.fft.fftshift(np.fft.fft(frames*window,axis=1),axes=1)
+        power=np.mean(np.abs(transformed)**2,axis=0)/(window.sum()**2)
+        db=10*np.log10(np.maximum(power,1e-16))
+        key=(center_freq,sample_rate,nfft)
+        if self.spectrum_key!=key:
+            self.spectrum_peak=db.copy()
+            self.spectrum_key=key
+        else:
+            self.spectrum_peak=np.maximum(self.spectrum_peak,db)
+        return {'center_hz':center_freq,'sample_rate_hz':sample_rate,'nfft':nfft,
+                'bin_hz':sample_rate/nfft,'enbw_hz':sample_rate*float(np.sum(window**2)/window.sum()**2),
+                'offset_hz':np.fft.fftshift(np.fft.fftfreq(nfft,1/sample_rate)).tolist(),
+                'dbfs_bin':db.tolist(),'peak_hold_dbfs_bin':self.spectrum_peak.tolist()}
+
+    def feed(self,iq,sample_rate,timestamp=None,gap=False,now=None,center_freq=0):
         if gap:self.reset()
         np=self.np
         if not len(iq):return
@@ -72,6 +99,7 @@ class SignalMonitor:
             self.wave=np.c_[us,low,high].tolist()
             self.wave_timestamp=timestamp
             self.wave_duration_us=len(iq)/sample_rate*1e6
+            self.fft_iq=np.asarray(iq,dtype=np.complex64).copy()
         if self.last_emit is not None and now-self.last_emit<.1:return
         if self.origin is None:self.origin=now
         rms=math.sqrt(self.power/self.count)
@@ -82,6 +110,7 @@ class SignalMonitor:
                      'near_full_scale':self.component_peak>=.999,
                      'component_peak':self.component_peak,'samples':self.count,
                      'waveform':self.wave,'duration_us':self.wave_duration_us,
+                     'spectrum':self.spectrum(self.fft_iq,sample_rate,center_freq),
                      'timestamp':self.wave_timestamp,'updated_monotonic':now}
         self.count=0
         self.power=self.peak=self.component_peak=0.
@@ -158,9 +187,10 @@ class Control(logging.Handler):
             self.points=self.modem.np.r_[self.points,points][-480:]
             self.version+=1
 
-    def samples(self,iq,sample_rate,timestamp=None,gap=False):
+    def samples(self,iq,sample_rate,timestamp=None,gap=False,center_freq=None):
         with self.lock:
-            self.signal_monitor.feed(iq,sample_rate,timestamp,gap)
+            self.signal_monitor.feed(iq,sample_rate,timestamp,gap,
+                                     center_freq=self.actual['freq'] if center_freq is None else center_freq)
 
     def frame(self,frame):
         with self.lock:
@@ -255,7 +285,7 @@ class Control(logging.Handler):
             iq=m.np.r_[m.np.zeros(200),iq,m.np.zeros(800)]
             iq=iq*m.np.exp(1j*(0.4+2*m.np.pi*22000*m.np.arange(len(iq))/args.sample_rate))
             iq+=(rng.normal(size=len(iq))+1j*rng.normal(size=len(iq)))*0.0015
-            self.samples(iq,args.sample_rate,time.time())
+            self.samples(iq,args.sample_rate,time.time(),center_freq=args.freq)
             rx=m.Receiver(args.sample_rate,args.threshold,args.chan_est,self.symbols)
             found=rx.feed(iq,time.time())
             for frame in found:

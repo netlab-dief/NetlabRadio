@@ -27,6 +27,49 @@ def args():
 
 
 class SignalTests(unittest.TestCase):
+    def test_spectrum_tone_frequency_and_level(self):
+        mon=gui.SignalMonitor(m.np)
+        n=m.np.arange(4096)
+        tone=.5*m.np.exp(2j*m.np.pi*137*n/2048)
+        mon.feed(tone,10e6,center_freq=5890e6,now=0)
+        s=mon.snapshot(now=0)['latest']['spectrum']
+        i=int(m.np.argmax(s['dbfs_bin']))
+        self.assertEqual(s['nfft'],2048)
+        self.assertAlmostEqual(s['offset_hz'][i],137*10e6/2048)
+        self.assertAlmostEqual(s['dbfs_bin'][i],-6.0206,places=4)
+        self.assertEqual(s['center_hz'],5890e6)
+        self.assertAlmostEqual(s['bin_hz'],10e6/2048)
+        self.assertAlmostEqual(s['enbw_hz']/s['bin_hz'],1.5,places=2)
+
+    def test_spectrum_keeps_negative_offset_on_lower_rf_side(self):
+        mon=gui.SignalMonitor(m.np)
+        tone=m.np.exp(-2j*m.np.pi*64*m.np.arange(4096)/2048)
+        mon.feed(tone,5e6,center_freq=5860e6,now=0)
+        s=mon.snapshot(now=0)['latest']['spectrum']
+        offset=s['offset_hz'][int(m.np.argmax(s['dbfs_bin']))]
+        self.assertEqual(offset,-64*5e6/2048)
+        self.assertEqual(s['center_hz']+offset,5859843750.)
+        self.assertEqual(s['offset_hz'][1024],0.)
+
+    def test_spectrum_max_hold_resets_when_center_changes(self):
+        mon=gui.SignalMonitor(m.np)
+        tone=m.np.ones(2048,complex)
+        mon.feed(tone,10e6,center_freq=5860e6,now=0)
+        mon.feed(tone*.1,10e6,center_freq=5860e6,now=.11)
+        s=mon.snapshot(now=.11)['latest']['spectrum']
+        self.assertAlmostEqual(max(s['dbfs_bin']),-20.,places=5)
+        self.assertAlmostEqual(max(s['peak_hold_dbfs_bin']),0.,places=5)
+        mon.feed(tone*.1,10e6,center_freq=5890e6,now=.22)
+        s=mon.snapshot(now=.22)['latest']['spectrum']
+        self.assertAlmostEqual(max(s['peak_hold_dbfs_bin']),-20.,places=5)
+
+    def test_spectrum_silence_serializes_without_infinity(self):
+        mon=gui.SignalMonitor(m.np)
+        mon.feed(m.np.zeros(4096,complex),10e6,center_freq=5860e6,now=0)
+        s=mon.snapshot(now=0)
+        self.assertTrue(all(x==-160 for x in s['latest']['spectrum']['dbfs_bin']))
+        json.dumps(s,allow_nan=False)
+
     def test_known_complex_amplitude_and_dbfs(self):
         mon=gui.SignalMonitor(m.np)
         mon.feed(m.np.full(1000,.3+.4j),5e6,timestamp=123.,now=0)

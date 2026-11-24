@@ -6,6 +6,7 @@
 <style>
 :root{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#181818;background:#ededed;color-scheme:light}
 *{box-sizing:border-box}body{margin:0;padding:12px}main{max-width:1140px;margin:auto}button,select,input{font:inherit;color:inherit}
+[hidden]{display:none!important}
 button,select,input[type=number]{background:#fff;border:1px solid #b8b8b8;border-radius:4px;padding:4px 8px}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}
 .toolbar{display:flex;align-items:center;gap:9px;padding:0 0 12px}.toolbar h1{font-size:17px;font-weight:600;margin:0 auto 0 0}.status{padding:5px 9px;background:#ddd;border-radius:4px}.status.active{background:#d7eddb}.status.demo{background:#fff0bd}
 .slider-row{display:grid;grid-template-columns:95px 100px 1fr;gap:12px;align-items:center;min-height:40px}.slider-row input[type=number]{width:100%}input[type=range]{width:100%;accent-color:#1774ce;margin:0}
@@ -30,13 +31,14 @@ details{margin-top:8px}pre{font:11px ui-monospace,monospace;background:#fafafa;b
 <div class="plot-box"><canvas id="constellation" aria-label="Costellazione I/Q: fino a 480 campioni equalizzati, assi da meno 2 a 2"></canvas></div>
 <div class="plot-tools"><label><input id="freeze" type="checkbox">Pausa grafico</label><label><input id="grid" type="checkbox">Griglia</label><label><input id="autoscale" type="checkbox">Autoscale</label><span id="point_count">0 / 480 punti · 100 ms</span></div>
 <section class="signal-panel" aria-label="Ampiezza del segnale ricevuto">
-<h2>Segnale ricevuto · IQ grezzo</h2>
-<div class="plot-tools"><label for="amplitude_scale">Scala:</label><select id="amplitude_scale"><option value="linear">Ampiezza |I+jQ|</option><option value="dbfs">dBFS</option></select><label><input id="amplitude_freeze" type="checkbox">Pausa ampiezza</label><span id="signal_status">In attesa di campioni ricevuti</span></div>
-<div class="plot-tools"><label for="amplitude_time_mode">Andamento nel tempo:</label><select id="amplitude_time_mode"><option value="fixed" selected>Finestra fissa · 0–10 s</option><option value="scroll">Scorrimento · ultimi 10 s</option></select><label><input id="amplitude_fixed_y" type="checkbox" checked>Scala Y fissa</label><span id="time_mode_hint">I punti restano fermi; a 10 s riparte una nuova finestra.</span></div>
+<h2 id="signal_heading">Segnale ricevuto · spettro centrato</h2>
+<div class="plot-tools"><label for="signal_view">Vista:</label><select id="signal_view"><option value="spectrum" selected>Spettro · frequenza al centro banda</option><option value="time">Ampiezza nel tempo</option></select><label for="amplitude_scale">Scala:</label><select id="amplitude_scale"><option value="linear">Ampiezza lineare</option><option value="dbfs" selected>dBFS</option></select><label><input id="amplitude_fixed_y" type="checkbox" checked>Scala Y fissa</label><label><input id="spectrum_hold" type="checkbox">Max hold</label></div>
+<div class="plot-tools"><label><input id="amplitude_freeze" type="checkbox">Pausa ampiezza</label><label><input id="show_level_history" type="checkbox">Mostra storico temporale</label><span id="signal_status">In attesa di campioni ricevuti</span></div>
+<div class="plot-tools" id="history_controls" hidden><label for="amplitude_time_mode">Storico temporale:</label><select id="amplitude_time_mode"><option value="fixed" selected>Finestra fissa · 0–10 s</option><option value="scroll">Scorrimento · ultimi 10 s</option></select><span id="time_mode_hint">I punti restano fermi; a 10 s riparte una nuova finestra.</span></div>
 <div class="signal-levels"><span id="rms_level">RMS: —</span><span id="peak_level">Picco: —</span><span id="full_scale">Fondo scala I/Q: —</span></div>
-<div class="plot-box"><canvas id="amplitude" aria-label="Ampiezza IQ ricevuta nel tempo, prima della decodifica"></canvas></div>
-<div class="plot-box history-box"><canvas id="level_history" aria-label="Andamento RMS e picco, finestra fissa da zero a dieci secondi"></canvas></div>
-<p class="signal-note">IQ dalla radio, prima del rilevamento dei pacchetti. RMS e picco includono tutti i blocchi letti nell’intervallo di aggiornamento; il grafico superiore conserva il blocco con il picco maggiore, con inviluppo minimo/massimo. 0 dBFS corrisponde ad ampiezza complessa 1: non è una misura calibrata in dBm.</p>
+<div class="plot-box"><canvas id="amplitude" aria-label="Spettro ricevuto centrato sulla frequenza radio selezionata"></canvas></div>
+<div class="plot-box history-box" id="history_box" hidden><canvas id="level_history" aria-label="Andamento RMS e picco, finestra fissa da zero a dieci secondi"></canvas></div>
+<p class="signal-note" id="signal_note">Spettro FFT degli IQ ricevuti, centrato sulla frequenza radio selezionata. L’asse X è la frequenza RF in MHz, non il tempo. Livelli digitali per bin FFT: non sono dBm calibrati.</p>
 </section>
 <div class="slider-row" title="Variabile non collegata a un generatore nel flowgraph originale"><label for="pdu_length">'pdu_length'</label><input id="pdu_length" type="number" min="0" max="1500" step="1" value="500"><input data-range="pdu_length" aria-label="pdu_length slider" type="range" min="0" max="1500" step="1" value="500"></div>
 <div class="slider-row" title="Variabile non collegata a un generatore nel flowgraph originale"><label for="interval">'interval'</label><input id="interval" type="number" min="100" max="10000" step="1" value="1000"><input data-range="interval" aria-label="interval slider" type="range" min="100" max="10000" step="1" value="1000"></div>
@@ -106,9 +108,28 @@ function drawSignal(){
  const toDb=x=>Math.max(-160,20*Math.log10(Math.max(x,1e-8)));
  const fixedY=$('amplitude_fixed_y').checked;
  const upper=db?(fixedY?6:Math.max(6,(last?.peak_dbfs??0)+3)):(fixedY?1.5:Math.max(1.05,(last?.peak??0)*1.12));
- const scope=chartFrame('amplitude',0,last?.duration_us||1,db?-120:0,upper,'Tempo nel blocco (µs)',db?'Ampiezza (dBFS)':'Ampiezza |IQ|');
+ const spectral=$('signal_view').value==='spectrum',spectrum=last?.spectrum;
+ const center=spectrum?.center_hz??lastState?.applied?.freq??5860e6;
+ const rate=spectrum?.sample_rate_hz??lastState?.applied?.sample_rate??10e6;
+ const showHistory=$('show_level_history').checked;
+ $('history_controls').hidden=!showHistory;$('history_box').hidden=!showHistory;
+ $('spectrum_hold').disabled=!spectral;
+ $('signal_heading').textContent=spectral?`Spettro ricevuto · centro ${(center/1e6).toFixed(3)} MHz`:'Segnale ricevuto · ampiezza nel tempo';
+ $('amplitude').setAttribute('aria-label',spectral?`Spettro ricevuto centrato a ${(center/1e6).toFixed(3)} MHz`:'Ampiezza IQ ricevuta nel tempo, prima della decodifica');
+ $('signal_note').textContent=spectral?`Asse X: frequenza RF fissa da ${((center-rate/2)/1e6).toFixed(3)} a ${((center+rate/2)/1e6).toFixed(3)} MHz. FFT Hann ${spectrum?.nfft??2048} punti; passo bin ≈ ${(spectrum?.bin_hz??rate/2048).toFixed(0)} Hz. Livelli per bin FFT, non dBm calibrati. RMS e picco sopra il grafico si riferiscono agli IQ nel tempo.`:'IQ prima della decodifica: inviluppo minimo/massimo del blocco con picco maggiore nell’intervallo. RMS e picco aggregano tutti i blocchi letti. 0 dBFS = ampiezza complessa 1; non sono dBm calibrati.';
+ const scope=spectral?chartFrame('amplitude',(center-rate/2)/1e6,(center+rate/2)/1e6,db?-120:0,upper,'Frequenza RF (MHz)',db?'Livello (dBFS/bin)':'Ampiezza FFT'):chartFrame('amplitude',0,last?.duration_us||1,db?-120:0,upper,'Tempo nel blocco (µs)',db?'Ampiezza (dBFS)':'Ampiezza |IQ|');
  const {c,px,py,left,top,pw,ph}=scope;
- if(last){
+ if(spectral){
+  if(spectrum){
+   c.save();c.beginPath();c.rect(left,top,pw,ph);c.clip();
+   for(const [values,color] of [[spectrum.dbfs_bin,'#1774ce'],...($('spectrum_hold').checked?[[spectrum.peak_hold_dbfs_bin,'#d17400']]:[])]){
+    c.strokeStyle=color;c.lineWidth=1;c.beginPath();
+    values.forEach((v,i)=>{const x=px((center+spectrum.offset_hz[i])/1e6),y=py(db?v:10**(v/20));if(i)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();
+   }
+   c.strokeStyle='#777';c.setLineDash([4,4]);c.beginPath();c.moveTo(px(center/1e6),top);c.lineTo(px(center/1e6),top+ph);c.stroke();c.restore();
+   c.fillStyle='#444';c.textAlign='center';c.fillText(`fc ${(center/1e6).toFixed(3)} MHz`,px(center/1e6),top+13);
+  }
+ }else if(last){
   c.save();c.beginPath();c.rect(left,top,pw,ph);c.clip();c.fillStyle='rgba(23,116,206,.22)';c.strokeStyle='#1774ce';c.lineWidth=1;
   c.beginPath();last.waveform.forEach(([t,low,high],i)=>{const x=px(t),y=py(db?toDb(high):high);if(i)c.lineTo(x,y);else c.moveTo(x,y);});
   [...last.waveform].reverse().forEach(([t,low])=>c.lineTo(px(t),py(db?toDb(low):low)));c.closePath();c.fill();
@@ -162,7 +183,7 @@ for(const n of ['grid','autoscale'])$(n).addEventListener('change',draw);
 $('freeze').addEventListener('change',()=>{if(!$('freeze').checked)version=-1;});
 window.addEventListener('resize',draw);draw();poll();setInterval(poll,100);
 window.addEventListener('resize',drawSignal);$('amplitude_scale').addEventListener('change',drawSignal);
-for(const id of ['amplitude_time_mode','amplitude_fixed_y'])$(id).addEventListener('change',drawSignal);
+for(const id of ['amplitude_time_mode','amplitude_fixed_y','signal_view','spectrum_hold','show_level_history'])$(id).addEventListener('change',drawSignal);
 $('amplitude_freeze').addEventListener('change',()=>{if(!$('amplitude_freeze').checked)signalVersion=-1;});drawSignal();
 </script>
 </html>

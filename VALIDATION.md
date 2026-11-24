@@ -2,7 +2,7 @@
 
 Data: 24 novembre 2026. Mac ARM64, Python 3.13, NumPy 2.4.4, UHD 4.11.
 
-- 30 test unittest completati con esito positivo, inclusa la modalità a finestra fissa.
+- 34 test unittest completati con esito positivo, inclusa la vista spettrale centrata.
 - Loopback software: 32 frame, tutti gli 8 encoding, payload 0/37/500/1500
   byte, multipath a due tap, rumore, CFO 22 kHz e chunk di 511 campioni.
 - Pacchetti consecutivi con chunk di lunghezza variabile e CFO positivo e negativo.
@@ -42,6 +42,13 @@ Data: 24 novembre 2026. Mac ARM64, Python 3.13, NumPy 2.4.4, UHD 4.11.
 - Finestra fissa: coordinate dei punti invariate al passare del tempo,
   nuova scansione a dieci secondi e ripartenza su reset; selettore fisso/
   scorrimento e scala Y fissa verificati nella GUI.
+- Spettro FFT: tono noto su bin positivo con ampiezza 0.5 misurato a
+  −6.0206 dBFS/bin, offset negativo sul lato RF inferiore, passo bin e
+  larghezza equivalente Hann verificati numericamente.
+- Max hold conservato a frequenza invariata e resettato sul cambio di centro;
+  silenzio con dati JSON finiti, senza NaN o infinito.
+- GUI verificata in simulazione: spettro 5855..5865 MHz con centro a 5860,
+  Max hold e successivo ricentramento a 5890 MHz (5885..5895 MHz).
 - Costo indicativo del monitor sul Mac di sviluppo: circa 0.31 ms per blocco
   da 65536 campioni; misura singola, non una garanzia di throughput RF.
 
