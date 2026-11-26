@@ -17,6 +17,7 @@ import signal
 import threading
 import time
 import webbrowser
+from urllib.parse import urlsplit, parse_qs
 
 ENCODINGS = ['BPSK 1/2','BPSK 3/4','QPSK 1/2','QPSK 3/4',
              '16QAM 1/2','16QAM 3/4','64QAM 2/3','64QAM 3/4']
@@ -49,6 +50,9 @@ class SignalMonitor:
         self.latest=None
         self.spectrum_peak=None
         self.spectrum_key=None
+        self.waterfall_rows=collections.deque(maxlen=300)
+        self.waterfall_seq=getattr(self,'waterfall_seq',0)
+        self.waterfall_epoch=getattr(self,'waterfall_epoch',0)+1
         self.version+=1
 
     def spectrum(self,iq,sample_rate,center_freq):
@@ -69,12 +73,34 @@ class SignalMonitor:
         if self.spectrum_key!=key:
             self.spectrum_peak=db.copy()
             self.spectrum_key=key
+            self.waterfall_rows.clear()
+            self.waterfall_epoch+=1
         else:
             self.spectrum_peak=np.maximum(self.spectrum_peak,db)
         return {'center_hz':center_freq,'sample_rate_hz':sample_rate,'nfft':nfft,
                 'bin_hz':sample_rate/nfft,'enbw_hz':sample_rate*float(np.sum(window**2)/window.sum()**2),
                 'offset_hz':np.fft.fftshift(np.fft.fftfreq(nfft,1/sample_rate)).tolist(),
                 'dbfs_bin':db.tolist(),'peak_hold_dbfs_bin':self.spectrum_peak.tolist()}
+
+    def record_waterfall(self,spectrum,now):
+        np=self.np
+        db=np.asarray(spectrum['dbfs_bin'])
+        group=max(1,len(db)//512)
+        # Peak pooling keeps a narrow carrier visible when reducing FFT columns.
+        reduced=np.maximum.reduceat(db,np.arange(0,len(db),group))
+        codes=np.rint((np.clip(reduced,-160,20)+160)*2).astype(np.uint16)
+        self.waterfall_seq+=1
+        self.waterfall_rows.append({'seq':self.waterfall_seq,'time_s':now,'levels':codes.tolist()})
+        while self.waterfall_rows and self.waterfall_rows[0]['time_s']<now-30:
+            self.waterfall_rows.popleft()
+
+    def waterfall_snapshot(self,after=0):
+        key=self.spectrum_key
+        return {'epoch':self.waterfall_epoch,'latest_seq':self.waterfall_seq,
+                'center_hz':None if key is None else key[0],
+                'sample_rate_hz':None if key is None else key[1],
+                'offset_db':-160.,'step_db':.5,
+                'rows':[dict(row) for row in self.waterfall_rows if row['seq']>after]}
 
     def feed(self,iq,sample_rate,timestamp=None,gap=False,now=None,center_freq=0):
         if gap:self.reset()
@@ -112,6 +138,7 @@ class SignalMonitor:
                      'waveform':self.wave,'duration_us':self.wave_duration_us,
                      'spectrum':self.spectrum(self.fft_iq,sample_rate,center_freq),
                      'timestamp':self.wave_timestamp,'updated_monotonic':now}
+        self.record_waterfall(self.latest['spectrum'],now)
         self.count=0
         self.power=self.peak=self.component_peak=0.
         self.wave=[]
@@ -191,6 +218,10 @@ class Control(logging.Handler):
         with self.lock:
             self.signal_monitor.feed(iq,sample_rate,timestamp,gap,
                                      center_freq=self.actual['freq'] if center_freq is None else center_freq)
+
+    def waterfall(self,after=0):
+        with self.lock:
+            return self.signal_monitor.waterfall_snapshot(after)
 
     def frame(self,frame):
         with self.lock:
@@ -345,6 +376,12 @@ def make_server(control,port=0):
             if not self.authorized_host():return self.reply(403,{'error':'Host non ammesso'})
             if self.path=='/':return self.reply(200,html,'text/html; charset=utf-8')
             if self.path=='/api/state':return self.reply(200,control.snapshot())
+            if urlsplit(self.path).path=='/api/waterfall':
+                try:
+                    after=int(parse_qs(urlsplit(self.path).query).get('after',['0'])[0])
+                    if not 0<=after<2**63:raise ValueError('Cursore non valido')
+                    return self.reply(200,control.waterfall(after))
+                except ValueError as exc:return self.reply(400,{'error':str(exc)})
             self.reply(404,{'error':'Non trovato'})
 
         def do_POST(self):

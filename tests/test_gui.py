@@ -27,6 +27,48 @@ def args():
 
 
 class SignalTests(unittest.TestCase):
+    def test_waterfall_retains_tone_frequency_with_quantized_levels(self):
+        mon=gui.SignalMonitor(m.np)
+        tone=.5*m.np.exp(2j*m.np.pi*137*m.np.arange(4096)/2048)
+        mon.feed(tone,10e6,center_freq=5860e6,now=0)
+        w=mon.waterfall_snapshot()
+        self.assertEqual(w['center_hz'],5860e6)
+        self.assertEqual(len(w['rows']),1)
+        levels=w['rows'][0]['levels']
+        self.assertEqual(len(levels),512)
+        self.assertEqual(int(m.np.argmax(levels)),(1024+137)//4)
+        self.assertAlmostEqual(w['offset_db']+w['step_db']*max(levels),-6.,places=5)
+
+    def test_waterfall_incremental_cursor_and_retune_epoch(self):
+        mon=gui.SignalMonitor(m.np)
+        tone=m.np.ones(2048,complex)
+        mon.feed(tone,10e6,center_freq=5860e6,now=0)
+        first=mon.waterfall_snapshot()
+        cursor=first['latest_seq']
+        self.assertEqual(mon.waterfall_snapshot(cursor)['rows'],[])
+        mon.feed(tone*.1,10e6,center_freq=5860e6,now=.11)
+        w=mon.waterfall_snapshot(cursor)
+        self.assertEqual(len(w['rows']),1)
+        self.assertGreater(w['rows'][0]['seq'],cursor)
+        mon.feed(tone,10e6,center_freq=5890e6,now=.22)
+        w=mon.waterfall_snapshot(cursor)
+        self.assertNotEqual(w['epoch'],first['epoch'])
+        self.assertEqual(w['center_hz'],5890e6)
+        self.assertEqual(len(w['rows']),1)
+
+    def test_waterfall_history_is_bounded_and_reset_clears_it(self):
+        mon=gui.SignalMonitor(m.np)
+        tone=m.np.ones(64,complex)
+        for i in range(360):mon.feed(tone,10e6,now=i*.11)
+        w=mon.waterfall_snapshot()
+        self.assertLessEqual(len(w['rows']),300)
+        self.assertTrue(all(w['rows'][-1]['time_s']-r['time_s']<=30 for r in w['rows']))
+        seq=w['latest_seq']
+        mon.reset()
+        self.assertEqual(mon.waterfall_snapshot()['rows'],[])
+        mon.feed(tone,10e6,now=50)
+        self.assertGreater(mon.waterfall_snapshot()['latest_seq'],seq)
+
     def test_spectrum_tone_frequency_and_level(self):
         mon=gui.SignalMonitor(m.np)
         n=m.np.arange(4096)
@@ -256,6 +298,16 @@ class HTTPTests(unittest.TestCase):
         self.assertTrue(self.post({'action':'configure','settings':{'encoding':7,'chan_est':3}})['ok'])
         with urllib.request.urlopen(self.url+'/api/state') as r:s=json.load(r)
         self.assertEqual((s['config']['encoding'],s['config']['chan_est']),(7,3))
+
+    def test_waterfall_endpoint_only_returns_new_rows(self):
+        self.control.samples(m.np.ones(2048,complex)*.1,10e6)
+        with urllib.request.urlopen(self.url+'/api/waterfall?after=0') as r:w=json.load(r)
+        self.assertEqual(len(w['rows']),1)
+        with urllib.request.urlopen(self.url+f"/api/waterfall?after={w['latest_seq']}") as r:next_w=json.load(r)
+        self.assertEqual(next_w['rows'],[])
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(self.url+'/api/waterfall?after=-1')
+        self.assertEqual(ctx.exception.code,400)
 
     def test_invalid_and_cross_origin_actions_rejected(self):
         for body,token,expected in [({'action':'configure','settings':{'encoding':99}},None,400),

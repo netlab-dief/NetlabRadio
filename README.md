@@ -5,7 +5,35 @@ browser GUI. It does not import GNU Radio, gr-foo, gr-ieee802-11, Gqrx or
 gr-fosphor. Numba is optional and accelerates Viterbi decoding; the launcher
 attempts to install it once.
 
-## Getting started
+## Waterfall spectrogram
+
+The **Spettrogramma waterfall** checkbox shows a spectrogram below the spectrum
+plot, enabled by default. The horizontal axis stays centered on the selected
+RF frequency, the newest FFT appears at the top, and color represents the
+digital level in dBFS/bin. This view is independent of packet decoding and
+does not require valid 802.11p frames.
+
+- Choose a visible history of **5, 10 or 30 seconds**.
+- Set **Min dBFS/bin** and **Max** to adjust the color range; Min must be lower
+  than Max. The initial range is −100 to −20 dBFS/bin.
+- **Pausa waterfall** freezes only this display. The radio and other plots
+  continue running. The existing amplitude pause also pauses the waterfall.
+- Hiding or pausing the display leaves the backend's bounded history active;
+  resuming retrieves the available rows, up to the last 30 seconds.
+
+Rows use the same FFT snapshots as the centered spectrum, reduced to at most
+512 columns by preserving the maximum within each group of bins. Transport
+levels are quantized at 0.5 dB and clipped to −160..+20 dBFS/bin. The browser
+requests only new rows instead of repeatedly downloading the entire history.
+Each row represents a monitoring snapshot of roughly 100 ms; intervals with
+no FFT are drawn dark rather than interpolated. The time axis is relative to
+the latest monitoring FFT and is not a hardware timestamp or a calibrated
+time-frequency measurement. Color levels are digital, not calibrated dBm.
+
+Changing the center frequency, sample rate or FFT grid, or resetting the
+receiver, clears the history to avoid mixing incompatible frequency axes.
+
+## Getting started (macOS)
 
 For Linux installation, USB permissions, firmware images and launch commands,
 see [LINUX.md](LINUX.md). The same Python modem and browser GUI are used on

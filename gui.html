@@ -15,6 +15,7 @@ fieldset{border:1px solid #b8b8b8;border-radius:5px;padding:9px 12px;margin:7px 
 .plot-box{position:relative;border:1px solid #aaa;background:#fff;margin:10px 0 6px;height:400px}canvas{width:100%;height:100%;display:block}.plot-tools{display:flex;gap:12px;align-items:center;margin-bottom:3px;font-size:12px}.plot-tools label{display:flex;align-items:center;gap:4px}.plot-tools span{margin-left:auto;color:#555}
 .footer{font-size:12px;color:#555;border-top:1px solid #ccc;padding-top:9px;margin-top:9px;line-height:1.8;overflow-wrap:anywhere}.hint{color:#666;font-size:11px;margin:2px 0 8px 107px}.error{white-space:pre-wrap;background:#ffdfdf;color:#821a1a;border:1px solid #dda4a4;padding:10px;margin:8px 0}.error:empty{display:none}
 .signal-panel{border-top:1px solid #bbb;margin-top:16px;padding-top:10px}.signal-panel h2{font-size:15px;margin:0 0 10px}.signal-panel .plot-box{height:230px}.signal-panel .history-box{height:185px}.signal-levels{display:flex;gap:10px;flex-wrap:wrap;margin:9px 0;font-variant-numeric:tabular-nums}.signal-levels span{background:#fff;border:1px solid #ccc;border-radius:4px;padding:7px 10px}.signal-levels span.warning{background:#ffdfcc;color:#862b00;border-color:#d99b72}.signal-note{font-size:11px;color:#555;line-height:1.6;margin:5px 0 8px}
+.signal-panel .waterfall-box{height:330px}.waterfall-controls{flex-wrap:wrap}.waterfall-controls input[type=number]{width:75px}.color-key{display:flex;align-items:center;gap:10px;font-size:11px;color:#555;margin:5px 0 10px}.color-gradient{height:12px;flex:1;background:linear-gradient(to right,#080c20,#153bb5,#00c9eb,#19d57c,#f7ed35,#f35a20,#fff6df)}
 details{margin-top:8px}pre{font:11px ui-monospace,monospace;background:#fafafa;border:1px solid #ccc;padding:10px;max-height:180px;overflow:auto;white-space:pre-wrap}.metric{font-variant-numeric:tabular-nums}#pending{color:#745712;margin-left:8px}
 @media(max-width:650px){body{padding:8px}.slider-row{grid-template-columns:75px 75px 1fr;gap:7px}.toolbar{flex-wrap:wrap}fieldset .radios{gap:13px}.plot-box{height:320px}.hint{margin-left:0}.plot-tools{flex-wrap:wrap}}
 </style>
@@ -37,6 +38,8 @@ details{margin-top:8px}pre{font:11px ui-monospace,monospace;background:#fafafa;b
 <div class="plot-tools" id="history_controls" hidden><label for="amplitude_time_mode">Storico temporale:</label><select id="amplitude_time_mode"><option value="fixed" selected>Finestra fissa · 0–10 s</option><option value="scroll">Scorrimento · ultimi 10 s</option></select><span id="time_mode_hint">I punti restano fermi; a 10 s riparte una nuova finestra.</span></div>
 <div class="signal-levels"><span id="rms_level">RMS: —</span><span id="peak_level">Picco: —</span><span id="full_scale">Fondo scala I/Q: —</span></div>
 <div class="plot-box"><canvas id="amplitude" aria-label="Spettro ricevuto centrato sulla frequenza radio selezionata"></canvas></div>
+<div class="plot-tools waterfall-controls"><label><input id="show_waterfall" type="checkbox" checked>Spettrogramma waterfall</label><label><input id="waterfall_freeze" type="checkbox">Pausa waterfall</label><label for="waterfall_seconds">Durata:</label><select id="waterfall_seconds"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option></select><label for="waterfall_min">Min dBFS/bin:</label><input id="waterfall_min" type="number" min="-160" max="19" step="5" value="-100"><label for="waterfall_max">Max:</label><input id="waterfall_max" type="number" min="-159" max="20" step="5" value="-20"><span id="waterfall_status">In attesa di FFT</span></div>
+<div id="waterfall_panel"><div class="plot-box waterfall-box"><canvas id="waterfall" aria-label="Spettrogramma waterfall: frequenza RF orizzontale, tempo verticale e livello rappresentato dal colore"></canvas></div><div class="color-key"><span id="waterfall_low_label">−100 dBFS/bin</span><div class="color-gradient" aria-hidden="true"></div><span id="waterfall_high_label">−20 dBFS/bin</span></div><p class="signal-note">Le FFT più recenti sono in alto. Colori chiari indicano livelli più alti; gli intervalli senza FFT sono scuri. Frequenza orizzontale fissa sul centro banda selezionato. La scala colore non indica dBm calibrati.</p></div>
 <div class="plot-box history-box" id="history_box" hidden><canvas id="level_history" aria-label="Andamento RMS e picco, finestra fissa da zero a dieci secondi"></canvas></div>
 <p class="signal-note" id="signal_note">Spettro FFT degli IQ ricevuti, centrato sulla frequenza radio selezionata. L’asse X è la frequenza RF in MHz, non il tempo. Livelli digitali per bin FFT: non sono dBm calibrati.</p>
 </section>
@@ -52,6 +55,8 @@ const metadata=__GUI_METADATA__;
 const $=id=>document.getElementById(id);
 let initialized=false,busy=false,editTimer=null,version=-1,points=[],lastState=null;
 let signalData=null,signalVersion=-1;
+let waterfallRows=[],waterfallEpoch=null,waterfallCursor=0,waterfallCenter=null,waterfallRate=null,waterfallBusy=false;
+const waterfallRaster=document.createElement('canvas');
 const names=['tx_gain','sample_rate','lo_offset','rx_gain','freq','encoding','chan_est','pdu_length','interval'];
 for(const [freq,label] of metadata.channels){const opt=document.createElement('option');opt.value=freq;opt.textContent=label;$('freq').append(opt);}
 for(const [target,name,labels] of [['encodings','encoding',metadata.encodings],['equalizers','chan_est',metadata.equalizers]]){
@@ -102,6 +107,51 @@ function chartFrame(id,xmin,xmax,ymin,ymax,xlabel,ylabel){
  }
  c.textAlign='center';c.fillText(xlabel,left+pw/2,h-5);c.save();c.translate(14,top+ph/2);c.rotate(-Math.PI/2);c.fillText(ylabel,0,0);c.restore();
  return {c,px,py,left,top,pw,ph};
+}
+function waterfallColor(t){
+ const stops=[[8,12,32],[21,59,181],[0,201,235],[25,213,124],[247,237,53],[243,90,32],[255,246,223]];
+ const pos=Math.max(0,Math.min(1,t))*(stops.length-1),i=Math.min(stops.length-2,Math.floor(pos)),f=pos-i;
+ return stops[i].map((v,j)=>Math.round(v+(stops[i+1][j]-v)*f));
+}
+function drawWaterfall(){
+ const shown=$('show_waterfall').checked;$('waterfall_panel').hidden=!shown;
+ if(!shown)return;
+ const seconds=Number($('waterfall_seconds').value),low=Number($('waterfall_min').value),high=Number($('waterfall_max').value);
+ if(!Number.isFinite(low)||!Number.isFinite(high)||low>=high){$('waterfall_status').textContent='La scala richiede Min < Max';return;}
+ const center=waterfallCenter??lastState?.applied?.freq??5860e6,rate=waterfallRate??lastState?.applied?.sample_rate??10e6;
+ const chart=chartFrame('waterfall',(center-rate/2)/1e6,(center+rate/2)/1e6,-seconds,0,'Frequenza RF (MHz)','Tempo prima dell’ultima FFT (s)');
+ const {c,left,top,pw,ph,px}=chart;
+ const columns=waterfallRows.length?waterfallRows[waterfallRows.length-1].levels.length:512,rows=Math.max(1,Math.round(ph));
+ waterfallRaster.width=columns;waterfallRaster.height=rows;
+ const rc=waterfallRaster.getContext('2d'),img=rc.createImageData(columns,rows);
+ for(let i=0;i<img.data.length;i+=4){img.data[i]=8;img.data[i+1]=12;img.data[i+2]=32;img.data[i+3]=255;}
+ const colors=Array.from({length:361},(_,v)=>waterfallColor((-160+v*.5-low)/(high-low)));
+ const newest=waterfallRows.length?waterfallRows[waterfallRows.length-1].time_s:0;
+ for(const row of waterfallRows){
+  const age=newest-row.time_s;if(age<0||age>=seconds||row.levels.length!==columns)continue;
+  const start=Math.floor(age/seconds*rows),end=Math.min(rows,Math.max(start+1,Math.ceil((age+.1)/seconds*rows)));
+  for(let y=start;y<end;y++)for(let x=0;x<columns;x++){
+   const color=colors[Math.max(0,Math.min(360,row.levels[x]))],i=(y*columns+x)*4;
+   img.data[i]=color[0];img.data[i+1]=color[1];img.data[i+2]=color[2];
+  }
+ }
+ rc.putImageData(img,0,0);c.imageSmoothingEnabled=false;c.drawImage(waterfallRaster,left,top,pw,ph);
+ c.save();c.strokeStyle='rgba(255,255,255,.55)';c.setLineDash([4,4]);c.beginPath();c.moveTo(px(center/1e6),top);c.lineTo(px(center/1e6),top+ph);c.stroke();c.restore();
+ $('waterfall_low_label').textContent=`${low} dBFS/bin`;$('waterfall_high_label').textContent=`${high} dBFS/bin`;
+ $('waterfall').setAttribute('aria-label',`Spettrogramma waterfall centrato a ${(center/1e6).toFixed(3)} MHz, ultimi ${seconds} secondi`);
+ $('waterfall_status').textContent=$('waterfall_freeze').checked||$('amplitude_freeze').checked?'Waterfall in pausa':waterfallRows.length?`${waterfallRows.length} FFT nello storico · nuove in alto`:'In attesa di FFT';
+}
+async function pollWaterfall(){
+ if(waterfallBusy||!$('show_waterfall').checked||$('waterfall_freeze').checked||$('amplitude_freeze').checked)return;
+ waterfallBusy=true;
+ try{
+  const r=await fetch(`/api/waterfall?after=${waterfallCursor}`,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const data=await r.json();
+  if(data.epoch!==waterfallEpoch){waterfallRows=[];waterfallEpoch=data.epoch;}
+  waterfallCenter=data.center_hz;waterfallRate=data.sample_rate_hz;
+  waterfallRows.push(...data.rows);waterfallCursor=data.latest_seq;
+  if(waterfallRows.length){const newest=waterfallRows[waterfallRows.length-1].time_s;waterfallRows=waterfallRows.filter(row=>newest-row.time_s<=30).slice(-300);}
+  drawWaterfall();
+ }catch(e){$('waterfall_status').textContent=`Waterfall: ${e.message}`;}finally{waterfallBusy=false;}
 }
 function drawSignal(){
  const last=signalData?.latest,db=$('amplitude_scale').value==='dbfs';
@@ -155,6 +205,7 @@ function drawSignal(){
  }else{
   $('rms_level').textContent='RMS: —';$('peak_level').textContent='Picco: —';$('full_scale').textContent='Fondo scala I/Q: —';$('full_scale').className='';
  }
+ drawWaterfall();
 }
 async function poll(){
  if(busy)return;busy=true;
@@ -173,6 +224,7 @@ async function poll(){
   if(!$('amplitude_freeze').checked){
    signalData=s.signal;
    if(signalVersion!==s.signal.version){signalVersion=s.signal.version;drawSignal();}
+   await pollWaterfall();
    const last=s.signal.latest;
    $('signal_status').textContent=!last?'In attesa di campioni ricevuti':last.age_s>.5?`Ultima misura ${last.age_s.toFixed(1)} s fa · non live`:`${s.demo?'IQ simulato':'IQ ricevuto'} · ${last.samples.toLocaleString('it-IT')} campioni · 100 ms`;
   }else{$('signal_status').textContent='Visualizzazione ampiezza in pausa';}
@@ -184,6 +236,7 @@ $('freeze').addEventListener('change',()=>{if(!$('freeze').checked)version=-1;})
 window.addEventListener('resize',draw);draw();poll();setInterval(poll,100);
 window.addEventListener('resize',drawSignal);$('amplitude_scale').addEventListener('change',drawSignal);
 for(const id of ['amplitude_time_mode','amplitude_fixed_y','signal_view','spectrum_hold','show_level_history'])$(id).addEventListener('change',drawSignal);
-$('amplitude_freeze').addEventListener('change',()=>{if(!$('amplitude_freeze').checked)signalVersion=-1;});drawSignal();
+$('amplitude_freeze').addEventListener('change',()=>{if(!$('amplitude_freeze').checked)signalVersion=-1;drawWaterfall();});drawSignal();
+for(const id of ['show_waterfall','waterfall_freeze','waterfall_seconds','waterfall_min','waterfall_max'])$(id).addEventListener('change',()=>{drawWaterfall();pollWaterfall();});
 </script>
 </html>

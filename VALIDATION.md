@@ -1,5 +1,20 @@
 # Validation performed
 
+## Waterfall update — November 26, 2026
+
+- All **39 unittest tests passed** with the current local source tree.
+- Verified narrow-tone frequency placement after FFT-column reduction and
+  0.5 dB transport quantization.
+- Verified incremental row cursors, retune/reset history clearing, monotonic
+  sequence numbers and the bounded 30-second/300-row history.
+- Verified the local waterfall API returns only new rows and rejects an
+  invalid cursor.
+- Browser checked in explicit software demo: live waterfall, fixed RF center,
+  five-second display selection, color legend and independent waterfall pause.
+- No additional RF validation was performed for this display update.
+
+## Earlier validation
+
 Date: November 24, 2026. ARM64 Mac, Python 3.13, NumPy 2.4.4, UHD 4.11.
 
 The following results were recorded during the original implementation validation:
